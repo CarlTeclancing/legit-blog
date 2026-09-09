@@ -12,11 +12,14 @@ import {auth,roles} from './middleware/auth.js'
 const prisma=new PrismaClient()
 const app=express()
 const allowedOrigins=(process.env.FRONTEND_URL||'http://localhost:5173').split(',').map(origin=>origin.trim()).filter(Boolean)
-app.use(cors({origin:(origin,callback)=>{
- const isLocalOrigin=origin&&/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
- if(!origin||allowedOrigins.includes(origin)||isLocalOrigin)return callback(null,true)
- callback(new Error('Origin not allowed by CORS'))
-}}))
+const isAllowedOrigin=origin=>{
+ if(!origin)return true
+ const isLocalOrigin=/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+ const isLegitVercelOrigin=/^https:\/\/(legit-blog(?:-[a-z0-9-]+)?|legit-blog-a46l)\.vercel\.app$/.test(origin)
+ return allowedOrigins.includes(origin)||isLocalOrigin||isLegitVercelOrigin
+}
+app.use(cors({origin:(origin,callback)=>callback(null,isAllowedOrigin(origin))}))
+app.options('*',cors({origin:(origin,callback)=>callback(null,isAllowedOrigin(origin))}))
 app.use(express.json({limit:'2mb'}))
 app.use(morgan('dev'))
 
@@ -53,12 +56,6 @@ app.post('/api/auth/login',async(req,res)=>{
  if(!u||!u.active||!await bcrypt.compare(password,u.password))return res.status(401).json({message:'Invalid credentials'})
  const token=jwt.sign({id:u.id,email:u.email,name:u.name,role:u.role},process.env.JWT_SECRET,{expiresIn:process.env.JWT_EXPIRES_IN||'7d'})
  res.json({token,user:{id:u.id,email:u.email,name:u.name,role:u.role}})
-})
-
-app.use((err,req,res,next)=>{
- if(res.headersSent)return next(err)
- console.error(err)
- res.status(500).json({message:'Internal server error'})
 })
 
 app.get('/api/categories',async(req,res)=>res.json(await prisma.category.findMany({orderBy:{name:'asc'},include:{_count:{select:{posts:true}}}})))
@@ -138,6 +135,7 @@ app.put('/api/admin/settings',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{
  res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{siteName,tagline,contactEmail,logoText,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead},create:{id:'main',siteName,tagline,contactEmail,logoText,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}}))
 })
 
-app.use((err,req,res,next)=>{console.error(err);res.status(500).json({message:'Server error',detail:process.env.NODE_ENV==='development'?err.message:undefined})})
+app.use((err,req,res,next)=>{if(res.headersSent)return next(err);console.error(err);res.status(err.status||500).json({message:'Server error',detail:process.env.NODE_ENV==='development'?err.message:undefined})})
 const port=Number(process.env.PORT||5000)
-app.listen(port,()=>console.log(`API running on http://localhost:${port}`))
+if(process.env.VERCEL!=='1')app.listen(port,()=>console.log(`API running on http://localhost:${port}`))
+export default app

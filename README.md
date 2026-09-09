@@ -26,6 +26,11 @@ npm run dev
 
 API: http://localhost:5000
 
+For the deployed frontend, set the backend deployment environment variable `FRONTEND_URL` to include both local and production origins, for example:
+`http://localhost:5173,https://legit-blog-a46l.vercel.app`
+
+The backend includes a Vercel function entry in `backend/api/index.js` and `backend/vercel.json`. Deploy the `backend` directory as the backend Vercel project, and set its `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `FRONTEND_URL`, and Cloudinary variables in Vercel Project Settings.
+
 Default seeded account:
 - email: admin@example.com
 - password: ChangeMe123!
