@@ -9,7 +9,7 @@ export default function Footer(){
     <div className="footer-grid">
       <div><div className="wordmark inverse"><span>THE</span> ARCHIVE</div><p>An independent editorial platform for history, art, ideas, culture and travel.</p></div>
       <div><h4>Topics</h4><Link to="/category/history">History</Link><Link to="/category/art-artists">Art & Artists</Link><Link to="/category/philosophy">Philosophy</Link><Link to="/category/travel">Travel</Link></div>
-      <div><h4>About</h4><Link to="/about">About Us</Link><Link to="/authors">Authors</Link><Link to="/admin">Admin</Link></div>
+      <div><h4>About</h4><Link to="/about">About Us</Link><Link to="/author-request">Request author access</Link><Link to="/admin">Account</Link><Link to="/terms">Terms and conditions</Link><Link to="/privacy">Privacy policy</Link><Link to="/cookies">Cookie policy</Link></div>
     </div>
     <div className="copyright">© {new Date().getFullYear()} The Archive. All rights reserved.</div>
   </footer>

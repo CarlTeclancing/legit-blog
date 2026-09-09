@@ -84,6 +84,12 @@ app.post('/api/newsletter',async(req,res)=>{
  const email=String(req.body.email||'').trim().toLowerCase();if(!email.includes('@'))return res.status(400).json({message:'Valid email required'})
  const item=await prisma.newsletterSubscriber.upsert({where:{email},update:{active:true},create:{email,source:'website'}});res.status(201).json(item)
 })
+app.post('/api/author-requests',async(req,res)=>{
+ const {name,email,bio,portfolioUrl,pitch}=req.body
+ if(!name?.trim()||!email?.includes('@')||!bio?.trim()||!pitch?.trim())return res.status(400).json({message:'Name, valid email, bio, and pitch are required'})
+ const request=await prisma.authorRequest.create({data:{name:name.trim(),email:email.trim().toLowerCase(),bio:bio.trim(),portfolioUrl:portfolioUrl?.trim()||null,pitch:pitch.trim()}})
+ res.status(201).json({id:request.id,message:'Your author application has been received.'})
+})
 
 app.use('/api/admin',auth)
 app.get('/api/admin/stats',async(req,res)=>{

@@ -143,3 +143,15 @@ model Notification {
   userId String?
   createdAt DateTime @default(now())
 }
+
+model AuthorRequest {
+  id String @id @default(cuid())
+  name String
+  email String
+  bio String
+  portfolioUrl String?
+  pitch String
+  status String @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

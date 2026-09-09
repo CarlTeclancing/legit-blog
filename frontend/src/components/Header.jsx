@@ -1,5 +1,5 @@
 import { Link, NavLink } from 'react-router-dom'
-import { Menu, Search, X } from 'lucide-react'
+import { Menu, Search, X, UserRound } from 'lucide-react'
 import { useState } from 'react'
 
 const primary = [
@@ -19,7 +19,7 @@ export default function Header(){
     <div className="topbar">
       <button className="icon-btn mobile-only" onClick={()=>setOpen(!open)}>{open?<X/>:<Menu/>}</button>
       <Link to="/" className="wordmark"><span>THE</span> ARCHIVE</Link>
-      <button className="icon-btn" onClick={()=>setSearch(!search)}><Search/></button>
+      <div className="header-actions"><button className="icon-btn" title="Search" onClick={()=>setSearch(!search)}><Search/></button><Link className="icon-btn account-link" title="Account" to="/admin"><UserRound/></Link></div>
     </div>
     {search && <form className="searchbar" action="/search"><input name="q" autoFocus placeholder="Search stories, people, places..."/></form>}
     <nav className={"mainnav "+(open?'open':'')}>
