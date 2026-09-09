@@ -1,0 +1,4 @@
+import {useEffect,useState} from 'react';import api from '../../api'
+export default function Categories(){const [items,setItems]=useState([]);const [name,setName]=useState('');const load=()=>api.get('/categories').then(r=>setItems(r.data));useEffect(()=>{load()},[])
+async function add(e){e.preventDefault();await api.post('/admin/categories',{name});setName('');load()}
+return <div><div className="admin-title"><div><h1>Categories</h1><p>Manage editorial sections and navigation topics.</p></div></div><div className="two-col"><form className="panel" onSubmit={add}><h3>Add category</h3><label>Name<input value={name} onChange={e=>setName(e.target.value)} required/></label><button className="primary">Create</button></form><div className="panel"><h3>Existing</h3>{items.map(c=><div className="list-row" key={c.id}><div><strong>{c.name}</strong><small>/{c.slug}</small></div><span>{c._count?.posts||0} posts</span></div>)}</div></div></div>}

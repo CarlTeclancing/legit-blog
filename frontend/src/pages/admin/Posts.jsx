@@ -1,0 +1,5 @@
+import { useEffect,useState } from 'react'; import api from '../../api'; import {Link} from 'react-router-dom'
+export default function Posts(){const [items,setItems]=useState([]); const load=()=>api.get('/admin/posts').then(r=>setItems(r.data));useEffect(()=>{load()},[])
+async function del(id){if(confirm('Delete this post?')){await api.delete('/admin/posts/'+id);load()}}
+return <div><div className="admin-title"><div><h1>Posts</h1><p>Create, draft, publish and archive editorial content.</p></div><Link className="primary linkbtn" to="/admin/posts/new">New post</Link></div>
+<div className="table-wrap"><table><thead><tr><th>Title</th><th>Status</th><th>Category</th><th>Author</th><th>Updated</th><th></th></tr></thead><tbody>{items.map(p=><tr key={p.id}><td><strong>{p.title}</strong></td><td><span className={'badge '+p.status.toLowerCase()}>{p.status}</span></td><td>{p.category?.name}</td><td>{p.author?.name}</td><td>{new Date(p.updatedAt).toLocaleDateString()}</td><td><Link to={`/admin/posts/${p.id}`}>Edit</Link> · <button className="text-danger" onClick={()=>del(p.id)}>Delete</button></td></tr>)}</tbody></table></div></div>}

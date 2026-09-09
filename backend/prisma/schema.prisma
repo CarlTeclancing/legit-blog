@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  EDITOR
+  AUTHOR
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  password String
+  role Role @default(AUTHOR)
+  bio String?
+  avatar String?
+  avatarMediaId String?
+  active Boolean @default(true)
+  posts Post[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id String @id @default(cuid())
+  name String @unique
+  slug String @unique
+  description String?
+  posts Post[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Tag {
+  id String @id @default(cuid())
+  name String @unique
+  slug String @unique
+  posts PostTag[]
+}
+
+model Post {
+  id String @id @default(cuid())
+  title String
+  slug String @unique
+  excerpt String?
+  content String
+  featuredImage String?
+  status PostStatus @default(DRAFT)
+  featured Boolean @default(false)
+  seoTitle String?
+  seoDescription String?
+  seoFocusKeyword String?
+  seoScore Int?
+  seoChecks Json?
+  contentFormat String @default("html")
+  featuredImageAlt String?
+  featuredImageCrop Json?
+  publishedAt DateTime?
+  authorId String
+  author User @relation(fields:[authorId], references:[id], onDelete:Restrict)
+  categoryId String?
+  category Category? @relation(fields:[categoryId], references:[id], onDelete:SetNull)
+  tags PostTag[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PostTag {
+  postId String
+  tagId String
+  post Post @relation(fields:[postId],references:[id],onDelete:Cascade)
+  tag Tag @relation(fields:[tagId],references:[id],onDelete:Cascade)
+  @@id([postId,tagId])
+}
+
+model NewsletterSubscriber {
+  id String @id @default(cuid())
+  email String @unique
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  source String?
+  notes String?
+}
+
+model Media {
+  id String @id @default(cuid())
+  name String
+  url String
+  alt String?
+  mimeType String?
+  publicId String? @unique
+  width Int?
+  height Int?
+  bytes Int?
+  folder String?
+  resourceType String @default("image")
+  altText String?
+  focalPoint Json?
+  createdById String?
+  createdAt DateTime @default(now())
+}
+
+model SiteSetting {
+  id String @id @default("main")
+  siteName String @default("The Archive")
+  tagline String @default("Stories that teach, inform, and inspire.")
+  contactEmail String @default("hello@example.com")
+  logoText String @default("THE ARCHIVE")
+  footerText String @default("An independent editorial publication.")
+  defaultSeoTitle String?
+  defaultSeoDescription String?
+  socialLinks Json?
+  googleAnalyticsId String?
+  allowComments Boolean @default(false)
+  maintenanceMode Boolean @default(false)
+  brandColor String @default("#17344e")
+  customCss String?
+  customHead String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id String @id @default(cuid())
+  title String
+  message String
+  type String @default("info")
+  read Boolean @default(false)
+  userId String?
+  createdAt DateTime @default(now())
+}

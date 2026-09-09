@@ -1,0 +1,47 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies
+node_modules/
+
+# Build and coverage output
+dist/
+build/
+coverage/
+.vite/
+
+# Runtime data and logs
+*.log
+logs/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Prisma generated artifacts and local data
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+
+# Uploaded or generated media
+uploads/
+backend/uploads/
+frontend/public/uploads/
+
+# Editor and operating-system files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Local tooling
+.qodo/
