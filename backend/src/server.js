@@ -40,6 +40,12 @@ async function fetchPostList(status,limit,categorySlug=''){
  return prisma.$queryRaw(Prisma.sql`SELECT "id","title","slug","excerpt","featuredImage","featuredImageAlt","status","featured","publishedAt","createdAt","updatedAt","viewCount","likeCount","commentCount","authorId","categoryId" FROM "Post" WHERE ${statusFilter} ${categoryFilter} ORDER BY "featured" DESC, "publishedAt" DESC NULLS LAST, "createdAt" DESC LIMIT ${take}`)
 }
 
+async function fetchPostDetail(slug){
+ const rows=await prisma.$queryRaw(Prisma.sql`SELECT p."id",p."title",p."slug",p."excerpt",p."content",p."featuredImage",p."featuredImageAlt",p."status",p."featured",p."seoTitle",p."seoDescription",p."seoFocusKeyword",p."publishedAt",p."createdAt",p."updatedAt",p."viewCount",p."likeCount",p."commentCount",p."sourceName",p."sourceUrl",c."id" AS "categoryId",c."name" AS "categoryName",c."slug" AS "categorySlug",u."id" AS "authorId",u."name" AS "authorName",u."bio" AS "authorBio",u."avatar" AS "authorAvatar" FROM "Post" p LEFT JOIN "Category" c ON c."id"=p."categoryId" LEFT JOIN "User" u ON u."id"=p."authorId" WHERE p."slug"=${slug} LIMIT 1`)
+ const row=rows[0]; if(!row)return null
+ return {...row,category:row.categoryId?{id:row.categoryId,name:row.categoryName,slug:row.categorySlug}:null,author:row.authorId?{id:row.authorId,name:row.authorName,bio:row.authorBio,avatar:row.authorAvatar}:null,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}}
+}
+
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif'])
 const maxImageBytes=5*1024*1024
 
@@ -90,7 +96,7 @@ app.get('/api/posts',async(req,res)=>{
  res.json({items,category:cat})
 })
 app.get('/api/posts/:slug',async(req,res)=>{
- const p=await prisma.post.findUnique({where:{slug:req.params.slug},include:postInclude}); if(!p)return res.status(404).json({message:'Not found'}); await prisma.postView.create({data:{postId:p.id,fingerprint:fingerprint(req)}}); await prisma.post.update({where:{id:p.id},data:{viewCount:{increment:1}}}); res.json({...p,viewCount:p.viewCount+1})
+ const p=await fetchPostDetail(req.params.slug); if(!p)return res.status(404).json({message:'Not found'}); res.json({...p,viewCount:p.viewCount+1}); Promise.all([prisma.postView.create({data:{postId:p.id,fingerprint:fingerprint(req)}}),prisma.post.update({where:{id:p.id},data:{viewCount:{increment:1}}})]).catch(()=>{})
 })
 app.get('/api/posts/:slug/comments',async(req,res)=>{const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});res.json(await prisma.comment.findMany({where:{postId:p.id,status:'APPROVED'},orderBy:{createdAt:'desc'},select:{id:true,name:true,body:true,isAnonymous:true,createdAt:true}}))})
 app.post('/api/posts/:slug/comments',async(req,res)=>{
