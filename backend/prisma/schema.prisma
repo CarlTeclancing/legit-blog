@@ -69,6 +69,8 @@ model Post {
   contentFormat String @default("html")
   featuredImageAlt String?
   featuredImageCrop Json?
+  sourceName String?
+  sourceUrl String?
   viewCount Int @default(0)
   likeCount Int @default(0)
   publishedAt DateTime?

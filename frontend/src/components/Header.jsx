@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react'
 import { getSiteSettings } from '../settings'
 
 const primary = [
-  ['Ancient History','ancient-history'], ['Medieval','medieval'], ['History','history'],
-  ['Art & Artists','art-artists'], ['Philosophy','philosophy']
+  ['Cameroon','cameroon'], ['Africa','africa'], ['Technology','technology'], ['History','history'],
+  ['Art & Artists','art-artists']
 ]
 const more = [
+  ['Ancient History','ancient-history'],['Medieval','medieval'],['Philosophy','philosophy'],
   ['Interviews','interviews'],['Answers','answers'],['Mythology','mythology'],
   ['Religion','religion'],['Travel','travel'],['Stories','stories'],['Collecting','collecting'],
   ['Film','film'],['News','news'],['Maps & Resources','maps-resources']
