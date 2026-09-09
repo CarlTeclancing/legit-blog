@@ -6,14 +6,20 @@ import {getSiteSettings} from '../settings'
 export default function Home(){
  const [posts,setPosts]=useState([])
  const [cats,setCats]=useState([])
- const [site,setSite]=useState({siteName:'Legit.cm',tagline:'Stories that entertain, inform, and inspire.'});const [error,setError]=useState('')
- useEffect(()=>{Promise.all([api.get('/posts?status=PUBLISHED&limit=40'),api.get('/categories'),getSiteSettings()]).then(([postsResponse,categories,settings])=>{setPosts(postsResponse.data.items||[]);setCats(categories.data);setSite(settings)}).catch(error=>setError(error.response?.data?.message||'Stories are temporarily unavailable.'))},[])
+ const [site,setSite]=useState({siteName:'Legit.cm',tagline:'Stories that entertain, inform, and inspire.'});const [error,setError]=useState('');const [loading,setLoading]=useState(true)
+ useEffect(()=>{
+   api.get('/posts?status=PUBLISHED&limit=40').then(response=>setPosts(response.data.items||[])).catch(error=>setError(error.response?.data?.message||'Stories are temporarily unavailable.')).finally(()=>setLoading(false))
+   api.get('/categories').then(response=>setCats(response.data)).catch(()=>{})
+   getSiteSettings().then(setSite)
+ },[])
  const hero=posts[0]
  return <main>{error&&<div className="container alert page-alert">{error}</div>}
    <section className="masthead">
     <div className="container"><h1>{site.siteName||'Legit.cm'}</h1><p>{site.tagline}</p></div>
    </section>
-   <section className="container hero-grid">
+  {loading&&<div className="container page-pad"><p>Loading stories...</p></div>}
+  {!loading&&!error&&!posts.length&&<div className="container page-pad"><p>No published stories are available yet.</p></div>}
+  <section className="container hero-grid">
       {hero && <ArticleCard post={hero} large/>}
       <div className="side-stack">{posts.slice(1,4).map(p=><ArticleCard key={p.id} post={p}/>)}</div>
    </section>

@@ -29,6 +29,7 @@ app.use('/api', (req,res,next)=>{
 
 const safeUser={id:true,name:true,email:true,role:true,bio:true,avatar:true,active:true,createdAt:true}
 const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},category:true,tags:{include:{tag:true}},_count:{select:{comments:{where:{status:'APPROVED'}},likes:true,views:true}}}
+const publicPostSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,viewCount:true,likeCount:true,author:{select:{id:true,name:true,avatar:true}},category:true}
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif'])
 const maxImageBytes=5*1024*1024
 
@@ -73,7 +74,7 @@ app.get('/api/settings',async(req,res)=>res.json(await prisma.siteSetting.upsert
 app.get('/api/posts',async(req,res)=>{
  const {category,status='PUBLISHED',limit='30'}=req.query
  const where={}; if(status)where.status=status; if(category)where.category={slug:category}
- const items=await prisma.post.findMany({where,take:Math.min(Number(limit)||30,100),orderBy:[{featured:'desc'},{publishedAt:'desc'},{createdAt:'desc'}],include:postInclude})
+ const items=await prisma.post.findMany({where,take:Math.min(Number(limit)||30,100),orderBy:[{featured:'desc'},{publishedAt:'desc'},{createdAt:'desc'}],select:publicPostSelect})
  const cat=category?await prisma.category.findUnique({where:{slug:category}}):null
  res.json({items,category:cat})
 })
