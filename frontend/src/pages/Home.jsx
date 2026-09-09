@@ -8,7 +8,7 @@ export default function Home(){
  const [cats,setCats]=useState([])
  const [site,setSite]=useState({siteName:'Legit.cm',tagline:'Stories that entertain, inform, and inspire.'});const [error,setError]=useState('');const [loading,setLoading]=useState(true)
  useEffect(()=>{
-   api.get('/posts?status=PUBLISHED&limit=40').then(response=>setPosts(response.data.items||[])).catch(error=>setError(error.response?.data?.message||'Stories are temporarily unavailable.')).finally(()=>setLoading(false))
+  api.get('/posts?status=PUBLISHED&limit=12').then(response=>setPosts(response.data.items||[])).catch(error=>setError(error.code==='ECONNABORTED'?'The story service took too long to respond. Please try again shortly.':error.response?.data?.message||'Stories are temporarily unavailable.')).finally(()=>setLoading(false))
    api.get('/categories').then(response=>setCats(response.data)).catch(()=>{})
    getSiteSettings().then(setSite)
  },[])
