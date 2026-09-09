@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import slugify from 'slugify'
 import crypto from 'node:crypto'
-import {PrismaClient} from '@prisma/client'
+import {PrismaClient,Prisma} from '@prisma/client'
 import {auth,roles} from './middleware/auth.js'
 
 const prisma=globalThis.__legitPrisma||new PrismaClient()
@@ -32,6 +32,13 @@ const safeUser={id:true,name:true,email:true,role:true,bio:true,avatar:true,acti
 const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},category:true,tags:{include:{tag:true}},_count:{select:{comments:{where:{status:'APPROVED'}},likes:true,views:true}}}
 const publicPostSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,viewCount:true,likeCount:true,author:{select:{id:true,name:true,avatar:true}},category:true}
 const postListSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,updatedAt:true,viewCount:true,likeCount:true,commentCount:true,authorId:true,categoryId:true}
+
+async function fetchPostList(status,limit,categorySlug=''){
+ const take=Math.min(Number(limit)||30,100)
+ const statusFilter=status?Prisma.sql`"status" = ${status}::"PostStatus"`:Prisma.sql`TRUE`
+ const categoryFilter=categorySlug?Prisma.sql`AND "categoryId" IN (SELECT "id" FROM "Category" WHERE "slug" = ${categorySlug})`:Prisma.empty
+ return prisma.$queryRaw(Prisma.sql`SELECT "id","title","slug","excerpt","featuredImage","featuredImageAlt","status","featured","publishedAt","createdAt","updatedAt","viewCount","likeCount","commentCount","authorId","categoryId" FROM "Post" WHERE ${statusFilter} ${categoryFilter} ORDER BY "featured" DESC, "publishedAt" DESC NULLS LAST, "createdAt" DESC LIMIT ${take}`)
+}
 
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif'])
 const maxImageBytes=5*1024*1024
@@ -77,7 +84,7 @@ app.get('/api/settings',async(req,res)=>res.json(await prisma.siteSetting.upsert
 app.get('/api/posts',async(req,res)=>{
  const {category,status='PUBLISHED',limit='30'}=req.query
  const where={}; if(status)where.status=status; if(category)where.category={slug:category}
- const rows=await prisma.post.findMany({where,take:Math.min(Number(limit)||30,100),orderBy:[{featured:'desc'},{publishedAt:'desc'},{createdAt:'desc'}],select:postListSelect})
+ const rows=await fetchPostList(status,limit,category)
  const items=rows
  const cat=category?await prisma.category.findUnique({where:{slug:category}}):null
  res.json({items,category:cat})
@@ -127,7 +134,7 @@ app.post('/api/admin/media/upload',roles('SUPER_ADMIN','ADMIN','EDITOR','AUTHOR'
  const mimeType=req.headers['x-file-type']||req.headers['content-type']; const filename=req.headers['x-file-name']||'upload'; if(!imageTypes.has(mimeType)||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({message:'Upload a JPEG, PNG, WEBP, or GIF image.'}); if(req.body.length>maxImageBytes)return res.status(413).json({message:'Images must be 5 MB or smaller.'})
  const data=await uploadToCloudinary(req.body,{filename,mimeType,folder:req.headers['x-upload-folder']||'the-archive'}); const media=await prisma.media.create({data:{name:filename,url:data.secure_url,publicId:data.public_id,mimeType,width:data.width,height:data.height,bytes:data.bytes,folder:data.folder,resourceType:data.resource_type||'image',altText:req.headers['x-alt-text']||null,createdById:req.user.id}}); res.status(201).json(media)
 })
-app.get('/api/admin/posts',async(req,res)=>{const rows=await prisma.post.findMany({orderBy:{updatedAt:'desc'},select:postListSelect});res.json(rows.map(row=>({...row,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}})))})
+app.get('/api/admin/posts',async(req,res)=>{const rows=await fetchPostList('',100);res.json(rows.map(row=>({...row,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}})))})
 app.get('/api/admin/comments',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.findMany({orderBy:{createdAt:'desc'},include:{post:{select:{title:true,slug:true}}} })))
 app.patch('/api/admin/comments/:id',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.update({where:{id:req.params.id},data:{status:req.body.status}})))
 app.get('/api/admin/posts/:id',async(req,res)=>{const p=await prisma.post.findUnique({where:{id:req.params.id},include:postInclude});p?res.json(p):res.status(404).json({message:'Not found'})})
