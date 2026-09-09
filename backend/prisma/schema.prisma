@@ -73,6 +73,7 @@ model Post {
   sourceUrl String?
   viewCount Int @default(0)
   likeCount Int @default(0)
+  commentCount Int @default(0)
   publishedAt DateTime?
   authorId String
   author User @relation(fields:[authorId], references:[id], onDelete:Restrict)

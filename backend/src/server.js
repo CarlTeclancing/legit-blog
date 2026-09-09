@@ -31,7 +31,7 @@ app.use('/api', (req,res,next)=>{
 const safeUser={id:true,name:true,email:true,role:true,bio:true,avatar:true,active:true,createdAt:true}
 const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},category:true,tags:{include:{tag:true}},_count:{select:{comments:{where:{status:'APPROVED'}},likes:true,views:true}}}
 const publicPostSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,viewCount:true,likeCount:true,author:{select:{id:true,name:true,avatar:true}},category:true}
-const postListSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,updatedAt:true,viewCount:true,likeCount:true,authorId:true,categoryId:true}
+const postListSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,updatedAt:true,viewCount:true,likeCount:true,commentCount:true,authorId:true,categoryId:true}
 
 async function decoratePostList(rows,includeCounts=false){
  const categoryIds=[...new Set(rows.map(row=>row.categoryId).filter(Boolean))]
@@ -42,10 +42,7 @@ async function decoratePostList(rows,includeCounts=false){
   authorIds.length?prisma.user.findMany({where:{id:{in:authorIds}},select:{id:true,name:true,avatar:true}}):[]
  ])
  const categoryMap=new Map(categories.map(category=>[category.id,category])); const authorMap=new Map(authors.map(author=>[author.id,author]))
- if(!includeCounts)return rows.map(row=>({...row,category:categoryMap.get(row.categoryId)||null,author:authorMap.get(row.authorId)||null}))
- const countMap=(items)=>new Map(items.map(item=>[item.postId,item._count._all])); const [commentCounts,likeCounts,viewCounts]=await Promise.all([prisma.comment.groupBy({by:['postId'],where:{postId:{in:postIds},status:'APPROVED'},_count:{_all:true}}),prisma.postLike.groupBy({by:['postId'],where:{postId:{in:postIds}},_count:{_all:true}}),prisma.postView.groupBy({by:['postId'],where:{postId:{in:postIds}},_count:{_all:true}})])
- const comments=countMap(commentCounts); const likes=countMap(likeCounts); const views=countMap(viewCounts)
- return rows.map(row=>({...row,category:categoryMap.get(row.categoryId)||null,author:authorMap.get(row.authorId)||null,_count:{comments:comments.get(row.id)||0,likes:likes.get(row.id)||0,views:views.get(row.id)||0}}))
+ return rows.map(row=>({...row,category:categoryMap.get(row.categoryId)||null,author:authorMap.get(row.authorId)||null,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}}))
 }
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif'])
 const maxImageBytes=5*1024*1024
@@ -101,7 +98,7 @@ app.get('/api/posts/:slug',async(req,res)=>{
 })
 app.get('/api/posts/:slug/comments',async(req,res)=>{const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});res.json(await prisma.comment.findMany({where:{postId:p.id,status:'APPROVED'},orderBy:{createdAt:'desc'},select:{id:true,name:true,body:true,isAnonymous:true,createdAt:true}}))})
 app.post('/api/posts/:slug/comments',async(req,res)=>{
- const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});const {name,email,body}=req.body;const cleanName=String(name||'Anonymous').trim().slice(0,80);const cleanBody=String(body||'').trim().slice(0,2000);if(!cleanBody)return res.status(400).json({message:'Comment text is required'});if(email&&!String(email).includes('@'))return res.status(400).json({message:'Enter a valid email address'});const comment=await prisma.comment.create({data:{postId:p.id,name:cleanName||'Anonymous',email:email?String(email).trim().toLowerCase():null,body:cleanBody,isAnonymous:!email,status:'PENDING'}});res.status(201).json({id:comment.id,message:'Comment submitted for moderation.'})
+const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});const {name,email,body}=req.body;const cleanName=String(name||'Anonymous').trim().slice(0,80);const cleanBody=String(body||'').trim().slice(0,2000);if(!cleanBody)return res.status(400).json({message:'Comment text is required'});if(email&&!String(email).includes('@'))return res.status(400).json({message:'Enter a valid email address'});const comment=await prisma.comment.create({data:{postId:p.id,name:cleanName||'Anonymous',email:email?String(email).trim().toLowerCase():null,body:cleanBody,isAnonymous:!email,status:'PENDING'}});await prisma.post.update({where:{id:p.id},data:{commentCount:{increment:1}}});res.status(201).json({id:comment.id,message:'Comment submitted for moderation.'})
 })
 app.post('/api/posts/:slug/like',async(req,res)=>{const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true,likeCount:true}});if(!p)return res.status(404).json({message:'Not found'});try{await prisma.postLike.create({data:{postId:p.id,fingerprint:fingerprint(req)}});const updated=await prisma.post.update({where:{id:p.id},data:{likeCount:{increment:1}},select:{likeCount:true}});res.status(201).json({liked:true,likeCount:updated.likeCount})}catch(error){if(error.code==='P2002')return res.status(200).json({liked:false,likeCount:p.likeCount});throw error}})
 app.get('/api/search',async(req,res)=>{
@@ -141,7 +138,7 @@ app.post('/api/admin/media/upload',roles('SUPER_ADMIN','ADMIN','EDITOR','AUTHOR'
  const mimeType=req.headers['x-file-type']||req.headers['content-type']; const filename=req.headers['x-file-name']||'upload'; if(!imageTypes.has(mimeType)||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({message:'Upload a JPEG, PNG, WEBP, or GIF image.'}); if(req.body.length>maxImageBytes)return res.status(413).json({message:'Images must be 5 MB or smaller.'})
  const data=await uploadToCloudinary(req.body,{filename,mimeType,folder:req.headers['x-upload-folder']||'the-archive'}); const media=await prisma.media.create({data:{name:filename,url:data.secure_url,publicId:data.public_id,mimeType,width:data.width,height:data.height,bytes:data.bytes,folder:data.folder,resourceType:data.resource_type||'image',altText:req.headers['x-alt-text']||null,createdById:req.user.id}}); res.status(201).json(media)
 })
-app.get('/api/admin/posts',async(req,res)=>{const rows=await prisma.post.findMany({orderBy:{updatedAt:'desc'},select:postListSelect});res.json(await decoratePostList(rows,true))})
+app.get('/api/admin/posts',async(req,res)=>{const rows=await prisma.post.findMany({orderBy:{updatedAt:'desc'},select:postListSelect});res.json(await decoratePostList(rows))})
 app.get('/api/admin/comments',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.findMany({orderBy:{createdAt:'desc'},include:{post:{select:{title:true,slug:true}}} })))
 app.patch('/api/admin/comments/:id',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.update({where:{id:req.params.id},data:{status:req.body.status}})))
 app.get('/api/admin/posts/:id',async(req,res)=>{const p=await prisma.post.findUnique({where:{id:req.params.id},include:postInclude});p?res.json(p):res.status(404).json({message:'Not found'})})
