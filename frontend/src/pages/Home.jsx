@@ -9,9 +9,10 @@ export default function Home(){
  const [site,setSite]=useState({siteName:'Legit.cm',tagline:'Stories that entertain, inform, and inspire.'});const [error,setError]=useState('');const [loading,setLoading]=useState(true)
  useEffect(()=>{
   api.get('/posts?status=PUBLISHED&limit=12').then(response=>setPosts(response.data.items||[])).catch(error=>setError(error.code==='ECONNABORTED'?'The story service took too long to respond. Please try again shortly.':error.response?.data?.message||'Stories are temporarily unavailable.')).finally(()=>setLoading(false))
-   api.get('/categories').then(response=>setCats(response.data)).catch(()=>{})
+  api.get('/categories').then(response=>{setCats(response.data);setPosts(current=>current.map(post=>({...post,category:response.data.find(category=>category.id===post.categoryId)||null})))}).catch(()=>{})
    getSiteSettings().then(setSite)
  },[])
+ useEffect(()=>{if(cats.length)setPosts(current=>current.map(post=>({...post,category:cats.find(category=>category.id===post.categoryId)||post.category||null})))},[cats])
  const hero=posts[0]
  return <main>{error&&<div className="container alert page-alert">{error}</div>}
    <section className="masthead">
