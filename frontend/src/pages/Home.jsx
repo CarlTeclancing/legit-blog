@@ -1,15 +1,17 @@
 import { useEffect,useState } from 'react'
 import api from '../api'
 import ArticleCard from '../components/ArticleCard'
+import {getSiteSettings} from '../settings'
 
 export default function Home(){
  const [posts,setPosts]=useState([])
  const [cats,setCats]=useState([])
- useEffect(()=>{api.get('/posts?status=PUBLISHED&limit=40').then(r=>setPosts(r.data.items||[]));api.get('/categories').then(r=>setCats(r.data))},[])
+ const [site,setSite]=useState({siteName:'Legit.cm',tagline:'Stories that entertain, inform, and inspire.'})
+ useEffect(()=>{Promise.all([api.get('/posts?status=PUBLISHED&limit=40'),api.get('/categories'),getSiteSettings()]).then(([postsResponse,categories,settings])=>{setPosts(postsResponse.data.items||[]);setCats(categories.data);setSite(settings)})},[])
  const hero=posts[0]
  return <main>
    <section className="masthead">
-     <div className="container"><h1>A collection of great stories that teach, inform, and inspire.</h1><p>Original editorial work across history, art, philosophy, culture, travel and ideas.</p></div>
+    <div className="container"><h1>{site.siteName||'Legit.cm'}</h1><p>{site.tagline}</p></div>
    </section>
    <section className="container hero-grid">
       {hero && <ArticleCard post={hero} large/>}

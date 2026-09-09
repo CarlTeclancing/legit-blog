@@ -22,6 +22,10 @@ app.use(cors({origin:(origin,callback)=>callback(null,isAllowedOrigin(origin))})
 app.options('*',cors({origin:(origin,callback)=>callback(null,isAllowedOrigin(origin))}))
 app.use(express.json({limit:'2mb'}))
 app.use(morgan('dev'))
+app.use('/api', (req,res,next)=>{
+ if(req.method==='GET'&&!req.path.startsWith('/admin'))res.set('Cache-Control','public, max-age=30, s-maxage=60, stale-while-revalidate=300')
+ next()
+})
 
 const safeUser={id:true,name:true,email:true,role:true,bio:true,avatar:true,active:true,createdAt:true}
 const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},category:true,tags:{include:{tag:true}}}
@@ -129,6 +133,11 @@ app.get('/api/admin/users',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>res.json
 app.post('/api/admin/users',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{
  const {name,email,password,role='AUTHOR'}=req.body; const hash=await bcrypt.hash(password,12)
  res.status(201).json(await prisma.user.create({data:{name,email:email.toLowerCase(),password:hash,role},select:safeUser}))
+})
+app.put('/api/admin/users/:id',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{
+ const {name,email,bio,role,active,password}=req.body; const data={name,email:email.toLowerCase(),bio:bio||null,role,active:Boolean(active)}
+ if(password?.trim())data.password=await bcrypt.hash(password.trim(),12)
+ res.json(await prisma.user.update({where:{id:req.params.id},data,select:safeUser}))
 })
 app.put('/api/admin/settings',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{
  const {siteName,tagline,contactEmail,logoText,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}=req.body
