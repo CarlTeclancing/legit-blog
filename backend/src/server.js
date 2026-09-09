@@ -45,6 +45,10 @@ async function fetchPostDetail(slug){
  const row=rows[0]; if(!row)return null
  return {...row,category:row.categoryId?{id:row.categoryId,name:row.categoryName,slug:row.categorySlug}:null,author:row.authorId?{id:row.authorId,name:row.authorName,bio:row.authorBio,avatar:row.authorAvatar}:null,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}}
 }
+async function fetchPostDetailById(id){
+ const rows=await prisma.$queryRaw(Prisma.sql`SELECT p."id",p."title",p."slug",p."excerpt",p."content",p."featuredImage",p."featuredImageAlt",p."featuredImageCrop",p."status",p."featured",p."seoTitle",p."seoDescription",p."seoFocusKeyword",p."seoScore",p."seoChecks",p."contentFormat",p."publishedAt",p."createdAt",p."updatedAt",p."viewCount",p."likeCount",p."commentCount",p."sourceName",p."sourceUrl",p."authorId",p."categoryId" FROM "Post" p WHERE p."id"=${id} LIMIT 1`)
+ return rows[0]||null
+}
 
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif'])
 const maxImageBytes=5*1024*1024
@@ -122,9 +126,9 @@ app.post('/api/author-requests',async(req,res)=>{
 
 app.use('/api/admin',auth)
 app.get('/api/admin/stats',async(req,res)=>{
- const [published,drafts,categories,users,subscribers,posts,comments,views,likes,topPosts]=await Promise.all([
-  prisma.post.count({where:{status:'PUBLISHED'}}),prisma.post.count({where:{status:'DRAFT'}}),prisma.category.count(),prisma.user.count(),prisma.newsletterSubscriber.count({where:{active:true}}),prisma.post.count(),prisma.comment.count({where:{status:'PENDING'}}),prisma.postView.count(),prisma.postLike.count(),prisma.post.findMany({where:{status:'PUBLISHED'},orderBy:[{viewCount:'desc'},{likeCount:'desc'}],take:5,select:{id:true,title:true,slug:true,viewCount:true,likeCount:true,_count:{select:{comments:{where:{status:'APPROVED'}}}}}})
- ]);res.json({published,drafts,categories,users,subscribers,posts,comments,views,likes,topPosts})
+ const [published,drafts,categories,users,subscribers,posts,comments,publishedRows]=await Promise.all([
+  prisma.post.count({where:{status:'PUBLISHED'}}),prisma.post.count({where:{status:'DRAFT'}}),prisma.category.count(),prisma.user.count(),prisma.newsletterSubscriber.count({where:{active:true}}),prisma.post.count(),prisma.comment.count({where:{status:'PENDING'}}),fetchPostList('PUBLISHED',100)
+ ]); const topPosts=publishedRows.sort((a,b)=>(b.viewCount-a.viewCount)||(b.likeCount-a.likeCount)).slice(0,5); const views=publishedRows.reduce((sum,post)=>sum+post.viewCount,0); const likes=publishedRows.reduce((sum,post)=>sum+post.likeCount,0);res.json({published,drafts,categories,users,subscribers,posts,comments,views,likes,topPosts})
 })
 app.get('/api/admin/profile',async(req,res)=>res.json(await prisma.user.findUnique({where:{id:req.user.id},select:safeUser})))
 app.put('/api/admin/profile',async(req,res)=>{
@@ -143,7 +147,7 @@ app.post('/api/admin/media/upload',roles('SUPER_ADMIN','ADMIN','EDITOR','AUTHOR'
 app.get('/api/admin/posts',async(req,res)=>{const rows=await fetchPostList('',100);res.json(rows.map(row=>({...row,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}})))})
 app.get('/api/admin/comments',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.findMany({orderBy:{createdAt:'desc'},include:{post:{select:{title:true,slug:true}}} })))
 app.patch('/api/admin/comments/:id',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.update({where:{id:req.params.id},data:{status:req.body.status}})))
-app.get('/api/admin/posts/:id',async(req,res)=>{const p=await prisma.post.findUnique({where:{id:req.params.id},include:postInclude});p?res.json(p):res.status(404).json({message:'Not found'})})
+app.get('/api/admin/posts/:id',async(req,res)=>{const p=await fetchPostDetailById(req.params.id);p?res.json(p):res.status(404).json({message:'Not found'})})
 app.post('/api/admin/posts',async(req,res)=>{
  const b=req.body;const slug=b.slug?.trim()||slugify(b.title,{lower:true,strict:true});const publishedAt=b.status==='PUBLISHED'?new Date():null
  const seo=seoAnalysis(b); const p=await prisma.post.create({data:{title:b.title,slug,excerpt:b.excerpt||null,content:b.content||'',featuredImage:b.featuredImage||null,featuredImageAlt:b.featuredImageAlt||null,featuredImageCrop:b.featuredImageCrop||null,sourceName:b.sourceName||null,sourceUrl:b.sourceUrl||null,status:b.status||'DRAFT',featured:!!b.featured,seoTitle:b.seoTitle||null,seoDescription:b.seoDescription||null,seoFocusKeyword:b.seoFocusKeyword||null,seoScore:seo.score,seoChecks:seo.checks,contentFormat:b.contentFormat||'html',publishedAt,authorId:req.user.id,categoryId:b.categoryId||null},include:postInclude});res.status(201).json({...p,seo})
