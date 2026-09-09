@@ -9,7 +9,8 @@ import crypto from 'node:crypto'
 import {PrismaClient} from '@prisma/client'
 import {auth,roles} from './middleware/auth.js'
 
-const prisma=new PrismaClient()
+const prisma=globalThis.__legitPrisma||new PrismaClient()
+globalThis.__legitPrisma=prisma
 const app=express()
 const allowedOrigins=(process.env.FRONTEND_URL||'http://localhost:5173').split(',').map(origin=>origin.trim()).filter(Boolean)
 const isAllowedOrigin=origin=>{
@@ -30,6 +31,22 @@ app.use('/api', (req,res,next)=>{
 const safeUser={id:true,name:true,email:true,role:true,bio:true,avatar:true,active:true,createdAt:true}
 const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},category:true,tags:{include:{tag:true}},_count:{select:{comments:{where:{status:'APPROVED'}},likes:true,views:true}}}
 const publicPostSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,viewCount:true,likeCount:true,author:{select:{id:true,name:true,avatar:true}},category:true}
+const postListSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,updatedAt:true,viewCount:true,likeCount:true,authorId:true,categoryId:true}
+
+async function decoratePostList(rows,includeCounts=false){
+ const categoryIds=[...new Set(rows.map(row=>row.categoryId).filter(Boolean))]
+ const authorIds=[...new Set(rows.map(row=>row.authorId).filter(Boolean))]
+ const postIds=rows.map(row=>row.id)
+ const [categories,authors]=await Promise.all([
+  categoryIds.length?prisma.category.findMany({where:{id:{in:categoryIds}},select:{id:true,name:true,slug:true}}):[],
+  authorIds.length?prisma.user.findMany({where:{id:{in:authorIds}},select:{id:true,name:true,avatar:true}}):[]
+ ])
+ const categoryMap=new Map(categories.map(category=>[category.id,category])); const authorMap=new Map(authors.map(author=>[author.id,author]))
+ if(!includeCounts)return rows.map(row=>({...row,category:categoryMap.get(row.categoryId)||null,author:authorMap.get(row.authorId)||null}))
+ const countMap=(items)=>new Map(items.map(item=>[item.postId,item._count._all])); const [commentCounts,likeCounts,viewCounts]=await Promise.all([prisma.comment.groupBy({by:['postId'],where:{postId:{in:postIds},status:'APPROVED'},_count:{_all:true}}),prisma.postLike.groupBy({by:['postId'],where:{postId:{in:postIds}},_count:{_all:true}}),prisma.postView.groupBy({by:['postId'],where:{postId:{in:postIds}},_count:{_all:true}})])
+ const comments=countMap(commentCounts); const likes=countMap(likeCounts); const views=countMap(viewCounts)
+ return rows.map(row=>({...row,category:categoryMap.get(row.categoryId)||null,author:authorMap.get(row.authorId)||null,_count:{comments:comments.get(row.id)||0,likes:likes.get(row.id)||0,views:views.get(row.id)||0}}))
+}
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif'])
 const maxImageBytes=5*1024*1024
 
@@ -74,7 +91,8 @@ app.get('/api/settings',async(req,res)=>res.json(await prisma.siteSetting.upsert
 app.get('/api/posts',async(req,res)=>{
  const {category,status='PUBLISHED',limit='30'}=req.query
  const where={}; if(status)where.status=status; if(category)where.category={slug:category}
- const items=await prisma.post.findMany({where,take:Math.min(Number(limit)||30,100),orderBy:[{featured:'desc'},{publishedAt:'desc'},{createdAt:'desc'}],select:publicPostSelect})
+ const rows=await prisma.post.findMany({where,take:Math.min(Number(limit)||30,100),orderBy:[{featured:'desc'},{publishedAt:'desc'},{createdAt:'desc'}],select:postListSelect})
+ const items=await decoratePostList(rows)
  const cat=category?await prisma.category.findUnique({where:{slug:category}}):null
  res.json({items,category:cat})
 })
@@ -123,7 +141,7 @@ app.post('/api/admin/media/upload',roles('SUPER_ADMIN','ADMIN','EDITOR','AUTHOR'
  const mimeType=req.headers['x-file-type']||req.headers['content-type']; const filename=req.headers['x-file-name']||'upload'; if(!imageTypes.has(mimeType)||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({message:'Upload a JPEG, PNG, WEBP, or GIF image.'}); if(req.body.length>maxImageBytes)return res.status(413).json({message:'Images must be 5 MB or smaller.'})
  const data=await uploadToCloudinary(req.body,{filename,mimeType,folder:req.headers['x-upload-folder']||'the-archive'}); const media=await prisma.media.create({data:{name:filename,url:data.secure_url,publicId:data.public_id,mimeType,width:data.width,height:data.height,bytes:data.bytes,folder:data.folder,resourceType:data.resource_type||'image',altText:req.headers['x-alt-text']||null,createdById:req.user.id}}); res.status(201).json(media)
 })
-app.get('/api/admin/posts',async(req,res)=>res.json(await prisma.post.findMany({orderBy:{updatedAt:'desc'},include:postInclude})))
+app.get('/api/admin/posts',async(req,res)=>{const rows=await prisma.post.findMany({orderBy:{updatedAt:'desc'},select:postListSelect});res.json(await decoratePostList(rows,true))})
 app.get('/api/admin/comments',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.findMany({orderBy:{createdAt:'desc'},include:{post:{select:{title:true,slug:true}}} })))
 app.patch('/api/admin/comments/:id',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.update({where:{id:req.params.id},data:{status:req.body.status}})))
 app.get('/api/admin/posts/:id',async(req,res)=>{const p=await prisma.post.findUnique({where:{id:req.params.id},include:postInclude});p?res.json(p):res.status(404).json({message:'Not found'})})
