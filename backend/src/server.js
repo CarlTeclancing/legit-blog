@@ -28,7 +28,7 @@ app.use('/api', (req,res,next)=>{
 })
 
 const safeUser={id:true,name:true,email:true,role:true,bio:true,avatar:true,active:true,createdAt:true}
-const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},category:true,tags:{include:{tag:true}}}
+const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},category:true,tags:{include:{tag:true}},_count:{select:{comments:{where:{status:'APPROVED'}},likes:true,views:true}}}
 const imageTypes=new Set(['image/jpeg','image/png','image/webp','image/gif'])
 const maxImageBytes=5*1024*1024
 
@@ -43,6 +43,11 @@ function seoAnalysis(post){
   {key:'readability',label:'Content has at least 300 words',pass:text.trim().split(/\s+/).filter(Boolean).length>=300},
   {key:'imageAlt',label:'Featured image has alt text',pass:Boolean(post.featuredImageAlt?.trim())}
  ]; return {score:Math.round(checks.filter(item=>item.pass).length/checks.length*100),checks};
+}
+
+function fingerprint(req){
+ const source=`${req.headers['x-forwarded-for']||req.socket.remoteAddress||'unknown'}|${req.headers['user-agent']||'unknown'}`
+ return crypto.createHash('sha256').update(source).digest('hex')
 }
 
 async function uploadToCloudinary(buffer,{filename,mimeType,folder='the-archive'}){
@@ -73,8 +78,13 @@ app.get('/api/posts',async(req,res)=>{
  res.json({items,category:cat})
 })
 app.get('/api/posts/:slug',async(req,res)=>{
- const p=await prisma.post.findUnique({where:{slug:req.params.slug},include:postInclude}); if(!p)return res.status(404).json({message:'Not found'});res.json(p)
+ const p=await prisma.post.findUnique({where:{slug:req.params.slug},include:postInclude}); if(!p)return res.status(404).json({message:'Not found'}); await prisma.postView.create({data:{postId:p.id,fingerprint:fingerprint(req)}}); await prisma.post.update({where:{id:p.id},data:{viewCount:{increment:1}}}); res.json({...p,viewCount:p.viewCount+1})
 })
+app.get('/api/posts/:slug/comments',async(req,res)=>{const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});res.json(await prisma.comment.findMany({where:{postId:p.id,status:'APPROVED'},orderBy:{createdAt:'desc'},select:{id:true,name:true,body:true,isAnonymous:true,createdAt:true}}))})
+app.post('/api/posts/:slug/comments',async(req,res)=>{
+ const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});const {name,email,body}=req.body;const cleanName=String(name||'Anonymous').trim().slice(0,80);const cleanBody=String(body||'').trim().slice(0,2000);if(!cleanBody)return res.status(400).json({message:'Comment text is required'});if(email&&!String(email).includes('@'))return res.status(400).json({message:'Enter a valid email address'});const comment=await prisma.comment.create({data:{postId:p.id,name:cleanName||'Anonymous',email:email?String(email).trim().toLowerCase():null,body:cleanBody,isAnonymous:!email,status:'PENDING'}});res.status(201).json({id:comment.id,message:'Comment submitted for moderation.'})
+})
+app.post('/api/posts/:slug/like',async(req,res)=>{const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true,likeCount:true}});if(!p)return res.status(404).json({message:'Not found'});try{await prisma.postLike.create({data:{postId:p.id,fingerprint:fingerprint(req)}});const updated=await prisma.post.update({where:{id:p.id},data:{likeCount:{increment:1}},select:{likeCount:true}});res.status(201).json({liked:true,likeCount:updated.likeCount})}catch(error){if(error.code==='P2002')return res.status(200).json({liked:false,likeCount:p.likeCount});throw error}})
 app.get('/api/search',async(req,res)=>{
  const q=String(req.query.q||'').trim()
  if(!q)return res.json([])
@@ -94,9 +104,9 @@ app.post('/api/author-requests',async(req,res)=>{
 
 app.use('/api/admin',auth)
 app.get('/api/admin/stats',async(req,res)=>{
- const [published,drafts,categories,users,subscribers]=await Promise.all([
-  prisma.post.count({where:{status:'PUBLISHED'}}),prisma.post.count({where:{status:'DRAFT'}}),prisma.category.count(),prisma.user.count(),prisma.newsletterSubscriber.count({where:{active:true}})
- ]);res.json({published,drafts,categories,users,subscribers})
+ const [published,drafts,categories,users,subscribers,posts,comments,views,likes,topPosts]=await Promise.all([
+  prisma.post.count({where:{status:'PUBLISHED'}}),prisma.post.count({where:{status:'DRAFT'}}),prisma.category.count(),prisma.user.count(),prisma.newsletterSubscriber.count({where:{active:true}}),prisma.post.count(),prisma.comment.count({where:{status:'PENDING'}}),prisma.postView.count(),prisma.postLike.count(),prisma.post.findMany({where:{status:'PUBLISHED'},orderBy:[{viewCount:'desc'},{likeCount:'desc'}],take:5,select:{id:true,title:true,slug:true,viewCount:true,likeCount:true,_count:{select:{comments:{where:{status:'APPROVED'}}}}}})
+ ]);res.json({published,drafts,categories,users,subscribers,posts,comments,views,likes,topPosts})
 })
 app.get('/api/admin/profile',async(req,res)=>res.json(await prisma.user.findUnique({where:{id:req.user.id},select:safeUser})))
 app.put('/api/admin/profile',async(req,res)=>{
@@ -113,6 +123,8 @@ app.post('/api/admin/media/upload',roles('SUPER_ADMIN','ADMIN','EDITOR','AUTHOR'
  const data=await uploadToCloudinary(req.body,{filename,mimeType,folder:req.headers['x-upload-folder']||'the-archive'}); const media=await prisma.media.create({data:{name:filename,url:data.secure_url,publicId:data.public_id,mimeType,width:data.width,height:data.height,bytes:data.bytes,folder:data.folder,resourceType:data.resource_type||'image',altText:req.headers['x-alt-text']||null,createdById:req.user.id}}); res.status(201).json(media)
 })
 app.get('/api/admin/posts',async(req,res)=>res.json(await prisma.post.findMany({orderBy:{updatedAt:'desc'},include:postInclude})))
+app.get('/api/admin/comments',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.findMany({orderBy:{createdAt:'desc'},include:{post:{select:{title:true,slug:true}}} })))
+app.patch('/api/admin/comments/:id',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.update({where:{id:req.params.id},data:{status:req.body.status}})))
 app.get('/api/admin/posts/:id',async(req,res)=>{const p=await prisma.post.findUnique({where:{id:req.params.id},include:postInclude});p?res.json(p):res.status(404).json({message:'Not found'})})
 app.post('/api/admin/posts',async(req,res)=>{
  const b=req.body;const slug=b.slug?.trim()||slugify(b.title,{lower:true,strict:true});const publishedAt=b.status==='PUBLISHED'?new Date():null
