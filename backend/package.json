@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "prisma generate",
+    "vercel-build": "prisma generate && prisma migrate deploy",
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "seed": "node prisma/seed.js"
