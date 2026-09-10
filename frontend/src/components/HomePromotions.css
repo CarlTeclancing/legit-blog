@@ -1,0 +1,54 @@
+.animated-masthead { position: relative; overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 85% 25%, #244057 0, transparent 55%), var(--navy); }
+.hero-intro { position: relative; z-index: 1; }
+.hero-kicker { display: block; color: #e2bd70; text-transform: uppercase; letter-spacing: .2em; font-size: 11px; font-weight: 700; margin-bottom: 22px; }
+.hero-orbit { position: absolute; z-index: -1; border: 1px solid #d8a84828; border-radius: 50%; pointer-events: none; }
+.hero-orbit-one { width: 520px; height: 520px; right: -65px; top: -180px; }
+.hero-orbit-two { width: 360px; height: 360px; right: 15px; top: -100px; border-color: #ffffff12; }
+.hero-message-stage { display: grid; align-items: start; min-height: 88px; max-width: 680px; margin-top: 20px; }
+.masthead .hero-message { margin: 0; font-size: clamp(18px, 2.2vw, 25px); line-height: 1.5; animation: hero-message-in .65s ease-out both; }
+.hero-intro-bottom { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; margin-top: 10px; }
+.hero-explore { display: inline-flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 700; border-bottom: 1px solid #d8a848; padding-bottom: 8px; }
+.hero-message-controls { display: flex; align-items: center; gap: 2px; }
+.hero-message-dot { width: 28px; height: 32px; padding: 0; background: transparent; border: 0; cursor: pointer; display: grid; place-items: center; }
+.hero-message-dot::after { content: ''; width: 6px; height: 6px; border-radius: 8px; background: #ffffff55; transition: width .25s, background .25s; }
+.hero-message-dot.active::after { width: 22px; background: #e2bd70; }
+.hero-pause { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #ffffff40; border-radius: 50%; margin-left: 10px; color: white; background: transparent; cursor: pointer; }
+.hero-intro a:focus-visible, .hero-intro button:focus-visible { outline: 2px solid #e2bd70; outline-offset: 4px; }
+#latest-stories { scroll-margin-top: 145px; }
+.marketing-section { padding-top: 30px; }
+.marketing-heading { display: flex; justify-content: space-between; gap: 15px; margin-bottom: 12px; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
+.marketing-heading > :last-child { color: var(--muted); letter-spacing: .08em; font-weight: 400; }
+.marketing-banner { position: relative; overflow: hidden; background: var(--banner-color); border: 1px solid #11182612; border-radius: 8px; transition: background .4s; }
+.marketing-slide { display: grid; grid-template-columns: 1fr 1fr; min-height: 340px; animation: marketing-slide-in .55s ease-out both; }
+.marketing-art { grid-column: 2; grid-row: 1; min-height: 100%; overflow: hidden; }
+.marketing-art img { width: 100%; height: 100%; object-fit: cover; }
+.marketing-copy { grid-column: 1; grid-row: 1; align-self: center; padding: 35px 44px 70px; }
+.marketing-eyebrow { color: #334655; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: .15em; }
+.marketing-copy h2 { font: 700 clamp(26px, 3vw, 38px)/1.12 Georgia, serif; margin: 12px 0; max-width: 480px; }
+.marketing-copy p { color: #394651; line-height: 1.6; font-size: 14px; max-width: 410px; margin: 0 0 20px; }
+.marketing-cta { display: inline-flex; align-items: center; gap: 14px; background: var(--navy); color: white; border-radius: 4px; padding: 12px 16px; font-size: 12px; font-weight: 700; }
+.marketing-cta:hover { background: #244057; }
+.marketing-controls { position: absolute; left: 44px; bottom: 17px; display: flex; align-items: center; gap: 9px; }
+.marketing-controls button { display: grid; place-items: center; width: 32px; height: 32px; background: #ffffff80; color: var(--navy); border: 1px solid #11182620; border-radius: 50%; cursor: pointer; }
+.marketing-controls button:hover { background: white; }
+.marketing-dots { display: flex; gap: 1px; }
+.marketing-dots button { width: 24px; border: 0; background: transparent; }
+.marketing-dots button::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #11182650; }
+.marketing-dots button.active::after { background: var(--navy); box-shadow: 0 0 0 3px #11182618; }
+.marketing-count { font-size: 11px; font-variant-numeric: tabular-nums; color: #394651; margin: 0 3px; }
+.marketing-section button:focus-visible, .marketing-cta:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+@keyframes hero-message-in { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes marketing-slide-in { from { opacity: .25; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width: 700px) {
+  .animated-masthead { padding: 48px 0; }
+  .hero-message-stage { min-height: 110px; }
+  .marketing-slide { grid-template-columns: 1fr; }
+  .marketing-art { grid-column: 1; grid-row: 1; height: 180px; min-height: 0; }
+  .marketing-copy { grid-column: 1; grid-row: 2; padding: 24px 24px 70px; min-height: 310px; }
+  .marketing-controls { left: 24px; }
+  .marketing-heading > :last-child { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-message, .marketing-slide { animation: none !important; }
+  .hero-message-dot::after, .marketing-banner { transition: none; }
+}

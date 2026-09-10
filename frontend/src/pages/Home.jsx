@@ -2,6 +2,7 @@ import { useEffect,useState } from 'react'
 import api from '../api'
 import ArticleCard from '../components/ArticleCard'
 import {getSiteSettings} from '../settings'
+import {AnimatedHero, MarketingSlider} from '../components/HomePromotions'
 
 export default function Home(){
  const [posts,setPosts]=useState([])
@@ -15,12 +16,11 @@ export default function Home(){
  useEffect(()=>{if(cats.length)setPosts(current=>current.map(post=>({...post,category:cats.find(category=>category.id===post.categoryId)||post.category||null})))},[cats])
  const hero=posts[0]
  return <main>{error&&<div className="container alert page-alert">{error}</div>}
-   <section className="masthead">
-    <div className="container"><h1>{site.siteName||'Legit.cm'}</h1><p>{site.tagline}</p></div>
-   </section>
+   <AnimatedHero site={site}/>
+   <MarketingSlider/>
   {loading&&<div className="container page-pad"><p>Loading stories...</p></div>}
   {!loading&&!error&&!posts.length&&<div className="container page-pad"><p>No published stories are available yet.</p></div>}
-  <section className="container hero-grid">
+  <section className="container hero-grid" id="latest-stories" aria-label="Latest stories">
       {hero && <ArticleCard post={hero} large/>}
       <div className="side-stack">{posts.slice(1,4).map(p=><ArticleCard key={p.id} post={p}/>)}</div>
    </section>
