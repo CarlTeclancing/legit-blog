@@ -71,7 +71,12 @@ Commit `.env.example`, but normally do not commit production secrets.
 - Slugs
 - Author attribution
 - Hero and card images
+- Homepage adverts: admins and editors can add banners, upload or reuse media, edit text and links, set display order, and show/hide adverts under **Admin → Adverts**.
 - Newsletter subscriber list
 - Site identity and editable header/footer settings
 - Search endpoint
 - Public homepage/category/article routes
+
+Homepage adverts are stored in the `Advert` table. For each deployment, run `npx prisma migrate deploy` and `npx prisma generate` from `backend` before starting the API. The advert migration imports the original three promotions as editable records. The homepage shows only visible adverts and hides the slider when none are visible.
+
+Run advert API and validation checks with `node --test src/adverts.test.js` from `backend`.

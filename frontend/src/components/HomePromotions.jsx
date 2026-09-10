@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react'
-import { heroMessages, marketingBanners } from '../homeContent'
+import { heroMessages } from '../homeContent'
+import api from '../api'
 import './HomePromotions.css'
 
 function useRotation(count, delay) {
@@ -75,6 +76,17 @@ export function AnimatedHero({ site }) {
 }
 
 export function MarketingSlider() {
+  const [adverts, setAdverts] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    api.get('/adverts').then(response => { if (!cancelled) setAdverts(response.data) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  if (!adverts.length) return null
+  return <MarketingCarousel marketingBanners={adverts} />
+}
+
+function MarketingCarousel({ marketingBanners }) {
   const rotation = useRotation(marketingBanners.length, 6500)
   const slide = marketingBanners[rotation.index]
   return <section className="container marketing-section" aria-label="Featured promotions" aria-roledescription="carousel" {...rotation.interactions}>
@@ -86,18 +98,18 @@ export function MarketingSlider() {
           <span className="marketing-eyebrow">{slide.eyebrow}</span>
           <h2>{slide.title}</h2>
           <p>{slide.description}</p>
-          {slide.href.startsWith('#') ? <a className="marketing-cta" href={slide.href}>{slide.action}<ArrowRight size={17} /></a>
+          {slide.href.startsWith('#') || /^https?:\/\//i.test(slide.href) ? <a className="marketing-cta" href={slide.href}>{slide.action}<ArrowRight size={17} /></a>
             : <Link className="marketing-cta" to={slide.href}>{slide.action}<ArrowRight size={17} /></Link>}
         </div>
       </div>
-      <div className="marketing-controls" role="group" aria-label="Promotion controls">
+      {marketingBanners.length > 1 && <div className="marketing-controls" role="group" aria-label="Promotion controls">
         <button type="button" onClick={() => rotation.select(rotation.index - 1)} aria-label="Previous promotion"><ChevronLeft size={19} /></button>
         <div className="marketing-dots">{marketingBanners.map((banner, index) => <button type="button" key={banner.id} aria-label={`Show promotion ${index + 1}: ${banner.title}`} aria-pressed={index === rotation.index}
           className={index === rotation.index ? 'active' : ''} onClick={() => rotation.select(index)} />)}</div>
         <span className="marketing-count">{String(rotation.index + 1).padStart(2, '0')} / {String(marketingBanners.length).padStart(2, '0')}</span>
         {!rotation.reducedMotion && <button type="button" onClick={rotation.toggle} aria-label={rotation.paused ? 'Resume promotions' : 'Pause promotions'}>{rotation.paused ? <Play size={15} /> : <Pause size={15} />}</button>}
         <button type="button" onClick={() => rotation.select(rotation.index + 1)} aria-label="Next promotion"><ChevronRight size={19} /></button>
-      </div>
+      </div>}
     </div>
   </section>
 }

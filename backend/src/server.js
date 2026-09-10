@@ -8,6 +8,7 @@ import slugify from 'slugify'
 import crypto from 'node:crypto'
 import {PrismaClient,Prisma} from '@prisma/client'
 import {auth,roles} from './middleware/auth.js'
+import {advertRoutes} from './adverts.js'
 
 const prisma=globalThis.__legitPrisma||new PrismaClient()
 globalThis.__legitPrisma=prisma
@@ -79,6 +80,7 @@ async function uploadToCloudinary(buffer,{filename,mimeType,folder='the-archive'
  const response=await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,{method:'POST',body:form}); const data=await response.json(); if(!response.ok)throw Object.assign(new Error(data.error?.message||'Cloudinary upload failed'),{status:502}); return data
 }
 
+app.use('/api',advertRoutes(prisma))
 app.get('/api/health',(req,res)=>res.json({ok:true}))
 
 app.post('/api/auth/login',async(req,res)=>{
