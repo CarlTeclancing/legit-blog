@@ -34,12 +34,13 @@ test('advert API requires editorial access and persists visibility and edits', a
     },
   } }
   const app = express()
+  app.locals.prisma = {user:{findUnique:async({where})=>({id:where.id,role:where.id,active:true})}}
   app.use(express.json(), advertRoutes(prisma))
   const server = app.listen(0, '127.0.0.1')
   await new Promise(resolve => server.once('listening', resolve))
   const base = `http://127.0.0.1:${server.address().port}`
   const request = (path, method = 'GET', body, role) => fetch(base + path, {
-    method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer ${jwt.sign({ id: 'test', role }, process.env.JWT_SECRET)}` } : {}) },
+    method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer ${jwt.sign({ id: role, role }, process.env.JWT_SECRET)}` } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   })
   try {

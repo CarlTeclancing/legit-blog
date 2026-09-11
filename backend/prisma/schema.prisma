@@ -160,6 +160,7 @@ model SiteSetting {
   tagline String @default("Stories that teach, inform, and inspire.")
   contactEmail String @default("hello@example.com")
   logoText String @default("THE ARCHIVE")
+  logoUrl String?
   footerText String @default("An independent editorial publication.")
   defaultSeoTitle String?
   defaultSeoDescription String?
@@ -209,6 +210,20 @@ model AuthorRequest {
   portfolioUrl String?
   pitch String
   status String @default("PENDING")
+  response String @default("")
+  reviewedById String?
+  accountId String? @unique
+  replies AuthorReply[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AuthorReply {
+  id String @id @default(cuid())
+  requestId String
+  request AuthorRequest @relation(fields:[requestId], references:[id], onDelete:Cascade)
+  body String
+  status String @default("SENDING")
+  sentAt DateTime?
+  createdAt DateTime @default(now())
 }

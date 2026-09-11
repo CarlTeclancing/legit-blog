@@ -1,3 +1,4 @@
+import SiteLogo from './SiteLogo'
 import { Link, NavLink } from 'react-router-dom'
 import { Menu, Search, X, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -24,7 +25,7 @@ export default function Header(){
   return <header className="site-header">
     <div className="topbar">
       <button className="icon-btn mobile-only" onClick={()=>setOpen(!open)}>{open?<X/>:<Menu/>}</button>
-      <Link to="/" className="wordmark" onClick={closeMenu}>{site.logoText||site.siteName||'LEGIT.CM'}</Link>
+      <Link to="/" className="wordmark" onClick={closeMenu}><SiteLogo site={site}/></Link>
       <div className="header-actions"><button className="icon-btn" title="Search" onClick={()=>setSearch(!search)}><Search/></button><Link className="icon-btn account-link" title="Account" to="/admin"><UserRound/></Link></div>
     </div>
     {search && <form className="searchbar" action="/search"><input name="q" autoFocus placeholder="Search stories, people, places..."/></form>}

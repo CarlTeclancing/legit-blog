@@ -8,11 +8,15 @@ import slugify from 'slugify'
 import crypto from 'node:crypto'
 import {PrismaClient,Prisma} from '@prisma/client'
 import {auth,roles} from './middleware/auth.js'
+import {postManagement,handled,fail,cleanContent} from './post-management.js'
+import {authorManagement} from './author-management.js'
+import {adminAccess,accountPermission} from './permissions.js'
 import {advertRoutes} from './adverts.js'
 
 const prisma=globalThis.__legitPrisma||new PrismaClient()
 globalThis.__legitPrisma=prisma
 const app=express()
+app.locals.prisma=prisma
 const allowedOrigins=(process.env.FRONTEND_URL||'http://localhost:5173').split(',').map(origin=>origin.trim()).filter(Boolean)
 const isAllowedOrigin=origin=>{
  if(!origin)return true
@@ -35,16 +39,16 @@ const publicPostSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:
 const postListSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,updatedAt:true,viewCount:true,likeCount:true,commentCount:true,authorId:true,categoryId:true}
 
 async function fetchPostList(status,limit,categorySlug=''){
- const take=Math.min(Number(limit)||30,100)
+ const take=Math.max(1,Math.min(Number(limit)||30,100))
  const statusFilter=status?Prisma.sql`"status" = ${status}::"PostStatus"`:Prisma.sql`TRUE`
  const categoryFilter=categorySlug?Prisma.sql`AND "categoryId" IN (SELECT "id" FROM "Category" WHERE "slug" = ${categorySlug})`:Prisma.empty
  return prisma.$queryRaw(Prisma.sql`SELECT "id","title","slug","excerpt","featuredImage","featuredImageAlt","status","featured","publishedAt","createdAt","updatedAt","viewCount","likeCount","commentCount","authorId","categoryId" FROM "Post" WHERE ${statusFilter} ${categoryFilter} ORDER BY "featured" DESC, "publishedAt" DESC NULLS LAST, "createdAt" DESC LIMIT ${take}`)
 }
 
 async function fetchPostDetail(slug){
- const rows=await prisma.$queryRaw(Prisma.sql`SELECT p."id",p."title",p."slug",p."excerpt",p."content",p."featuredImage",p."featuredImageAlt",p."status",p."featured",p."seoTitle",p."seoDescription",p."seoFocusKeyword",p."publishedAt",p."createdAt",p."updatedAt",p."viewCount",p."likeCount",p."commentCount",p."sourceName",p."sourceUrl",c."id" AS "categoryId",c."name" AS "categoryName",c."slug" AS "categorySlug",u."id" AS "authorId",u."name" AS "authorName",u."bio" AS "authorBio",u."avatar" AS "authorAvatar" FROM "Post" p LEFT JOIN "Category" c ON c."id"=p."categoryId" LEFT JOIN "User" u ON u."id"=p."authorId" WHERE p."slug"=${slug} LIMIT 1`)
+ const rows=await prisma.$queryRaw(Prisma.sql`SELECT p."id",p."title",p."slug",p."excerpt",p."content",p."featuredImage",p."featuredImageAlt",p."status",p."featured",p."seoTitle",p."seoDescription",p."seoFocusKeyword",p."publishedAt",p."createdAt",p."updatedAt",p."viewCount",p."likeCount",p."commentCount",p."sourceName",p."sourceUrl",c."id" AS "categoryId",c."name" AS "categoryName",c."slug" AS "categorySlug",u."id" AS "authorId",u."name" AS "authorName",u."bio" AS "authorBio",u."avatar" AS "authorAvatar" FROM "Post" p LEFT JOIN "Category" c ON c."id"=p."categoryId" LEFT JOIN "User" u ON u."id"=p."authorId" WHERE p."slug"=${slug} AND p."status"='PUBLISHED' LIMIT 1`)
  const row=rows[0]; if(!row)return null
- return {...row,category:row.categoryId?{id:row.categoryId,name:row.categoryName,slug:row.categorySlug}:null,author:row.authorId?{id:row.authorId,name:row.authorName,bio:row.authorBio,avatar:row.authorAvatar}:null,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}}
+ return {...row,content:cleanContent(row.content),category:row.categoryId?{id:row.categoryId,name:row.categoryName,slug:row.categorySlug}:null,author:row.authorId?{id:row.authorId,name:row.authorName,bio:row.authorBio,avatar:row.authorAvatar}:null,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}}
 }
 async function fetchPostDetailById(id){
  const rows=await prisma.$queryRaw(Prisma.sql`SELECT p."id",p."title",p."slug",p."excerpt",p."content",p."featuredImage",p."featuredImageAlt",p."featuredImageCrop",p."status",p."featured",p."seoTitle",p."seoDescription",p."seoFocusKeyword",p."seoScore",p."seoChecks",p."contentFormat",p."publishedAt",p."createdAt",p."updatedAt",p."viewCount",p."likeCount",p."commentCount",p."sourceName",p."sourceUrl",p."authorId",p."categoryId" FROM "Post" p WHERE p."id"=${id} LIMIT 1`)
@@ -80,6 +84,7 @@ async function uploadToCloudinary(buffer,{filename,mimeType,folder='the-archive'
  const response=await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,{method:'POST',body:form}); const data=await response.json(); if(!response.ok)throw Object.assign(new Error(data.error?.message||'Cloudinary upload failed'),{status:502}); return data
 }
 
+app.use('/api/admin',auth,adminAccess)
 app.use('/api',advertRoutes(prisma))
 app.get('/api/health',(req,res)=>res.json({ok:true}))
 
@@ -91,10 +96,10 @@ app.post('/api/auth/login',async(req,res)=>{
 })
 
 app.get('/api/categories',async(req,res)=>res.json(await prisma.category.findMany({orderBy:{name:'asc'},include:{_count:{select:{posts:true}}}})))
-app.get('/api/settings',async(req,res)=>res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{},create:{id:'main'}})))
+app.get('/api/settings',handled(async(req,res)=>{res.set('Cache-Control','no-store');res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{},create:{id:'main'}}))}))
 
 app.get('/api/posts',async(req,res)=>{
- const {category,status='PUBLISHED',limit='30'}=req.query
+ const {category,limit='30'}=req.query;const status='PUBLISHED'
  const where={}; if(status)where.status=status; if(category)where.category={slug:category}
  const rows=await fetchPostList(status,limit,category)
  const items=rows
@@ -104,11 +109,12 @@ app.get('/api/posts',async(req,res)=>{
 app.get('/api/posts/:slug',async(req,res)=>{
  const p=await fetchPostDetail(req.params.slug); if(!p)return res.status(404).json({message:'Not found'}); res.json({...p,viewCount:p.viewCount+1}); Promise.all([prisma.postView.create({data:{postId:p.id,fingerprint:fingerprint(req)}}),prisma.post.update({where:{id:p.id},data:{viewCount:{increment:1}}})]).catch(()=>{})
 })
-app.get('/api/posts/:slug/comments',async(req,res)=>{const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});res.json(await prisma.comment.findMany({where:{postId:p.id,status:'APPROVED'},orderBy:{createdAt:'desc'},select:{id:true,name:true,body:true,isAnonymous:true,createdAt:true}}))})
+app.get('/api/posts/:slug/comments',async(req,res)=>{const p=await prisma.post.findFirst({where:{slug:req.params.slug,status:'PUBLISHED'},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});res.json(await prisma.comment.findMany({where:{postId:p.id,status:'APPROVED'},orderBy:{createdAt:'desc'},select:{id:true,name:true,body:true,isAnonymous:true,createdAt:true}}))})
 app.post('/api/posts/:slug/comments',async(req,res)=>{
-const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});const {name,email,body}=req.body;const cleanName=String(name||'Anonymous').trim().slice(0,80);const cleanBody=String(body||'').trim().slice(0,2000);if(!cleanBody)return res.status(400).json({message:'Comment text is required'});if(email&&!String(email).includes('@'))return res.status(400).json({message:'Enter a valid email address'});const comment=await prisma.comment.create({data:{postId:p.id,name:cleanName||'Anonymous',email:email?String(email).trim().toLowerCase():null,body:cleanBody,isAnonymous:!email,status:'PENDING'}});await prisma.post.update({where:{id:p.id},data:{commentCount:{increment:1}}});res.status(201).json({id:comment.id,message:'Comment submitted for moderation.'})
+ const settings=await prisma.siteSetting.findUnique({where:{id:'main'},select:{allowComments:true}});if(!settings?.allowComments)return res.status(403).json({message:'Comments are currently closed.'})
+const p=await prisma.post.findFirst({where:{slug:req.params.slug,status:'PUBLISHED'},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});const {name,email,body}=req.body;const cleanName=String(name||'Anonymous').trim().slice(0,80);const cleanBody=String(body||'').trim().slice(0,2000);if(!cleanBody)return res.status(400).json({message:'Comment text is required'});if(email&&!String(email).includes('@'))return res.status(400).json({message:'Enter a valid email address'});const comment=await prisma.comment.create({data:{postId:p.id,name:cleanName||'Anonymous',email:email?String(email).trim().toLowerCase():null,body:cleanBody,isAnonymous:!email,status:'PENDING'}});await prisma.post.update({where:{id:p.id},data:{commentCount:{increment:1}}});res.status(201).json({id:comment.id,message:'Comment submitted for moderation.'})
 })
-app.post('/api/posts/:slug/like',async(req,res)=>{const p=await prisma.post.findUnique({where:{slug:req.params.slug},select:{id:true,likeCount:true}});if(!p)return res.status(404).json({message:'Not found'});try{await prisma.postLike.create({data:{postId:p.id,fingerprint:fingerprint(req)}});const updated=await prisma.post.update({where:{id:p.id},data:{likeCount:{increment:1}},select:{likeCount:true}});res.status(201).json({liked:true,likeCount:updated.likeCount})}catch(error){if(error.code==='P2002')return res.status(200).json({liked:false,likeCount:p.likeCount});throw error}})
+app.post('/api/posts/:slug/like',async(req,res)=>{const p=await prisma.post.findFirst({where:{slug:req.params.slug,status:'PUBLISHED'},select:{id:true,likeCount:true}});if(!p)return res.status(404).json({message:'Not found'});try{await prisma.postLike.create({data:{postId:p.id,fingerprint:fingerprint(req)}});const updated=await prisma.post.update({where:{id:p.id},data:{likeCount:{increment:1}},select:{likeCount:true}});res.status(201).json({liked:true,likeCount:updated.likeCount})}catch(error){if(error.code==='P2002')return res.status(200).json({liked:false,likeCount:p.likeCount});throw error}})
 app.get('/api/search',async(req,res)=>{
  const q=String(req.query.q||'').trim()
  if(!q)return res.json([])
@@ -126,7 +132,8 @@ app.post('/api/author-requests',async(req,res)=>{
  res.status(201).json({id:request.id,message:'Your author application has been received.'})
 })
 
-app.use('/api/admin',auth)
+app.use('/api/admin',postManagement(prisma,seoAnalysis),authorManagement(prisma))
+app.get('/api/admin/settings',handled(async(req,res)=>res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{},create:{id:'main'}}))))
 app.get('/api/admin/stats',async(req,res)=>{
  const [published,drafts,categories,users,subscribers,posts,comments,publishedRows]=await Promise.all([
   prisma.post.count({where:{status:'PUBLISHED'}}),prisma.post.count({where:{status:'DRAFT'}}),prisma.category.count(),prisma.user.count(),prisma.newsletterSubscriber.count({where:{active:true}}),prisma.post.count(),prisma.comment.count({where:{status:'PENDING'}}),fetchPostList('PUBLISHED',100)
@@ -137,50 +144,51 @@ app.put('/api/admin/profile',async(req,res)=>{
  const {name,bio,avatar}=req.body; res.json(await prisma.user.update({where:{id:req.user.id},data:{name,bio:bio||null,avatar:avatar||null},select:safeUser}))
 })
 app.get('/api/admin/notifications',async(req,res)=>res.json(await prisma.notification.findMany({where:{OR:[{userId:req.user.id},{userId:null}]},orderBy:{createdAt:'desc'},take:30})))
-app.patch('/api/admin/notifications/:id/read',async(req,res)=>res.json(await prisma.notification.update({where:{id:req.params.id},data:{read:true}})))
+app.patch('/api/admin/notifications/:id/read',async(req,res)=>res.json(await prisma.notification.updateMany({where:{id:req.params.id,OR:[{userId:req.user.id},{userId:null}]},data:{read:true}})))
 app.get('/api/admin/newsletter',async(req,res)=>res.json(await prisma.newsletterSubscriber.findMany({orderBy:{createdAt:'desc'}})))
 app.patch('/api/admin/newsletter/:id',async(req,res)=>res.json(await prisma.newsletterSubscriber.update({where:{id:req.params.id},data:{active:Boolean(req.body.active),notes:req.body.notes}})))
-app.get('/api/admin/media',async(req,res)=>res.json(await prisma.media.findMany({orderBy:{createdAt:'desc'}})))
+app.get('/api/admin/media',async(req,res)=>res.json(await prisma.media.findMany({where:req.user.role==='AUTHOR'?{createdById:req.user.id}:{},orderBy:{createdAt:'desc'}})))
 app.delete('/api/admin/media/:id',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{await prisma.media.delete({where:{id:req.params.id}});res.json({ok:true})})
 app.post('/api/admin/media/upload',roles('SUPER_ADMIN','ADMIN','EDITOR','AUTHOR'),express.raw({type:['image/*','application/octet-stream'],limit:'5mb'}),async(req,res)=>{
  const mimeType=req.headers['x-file-type']||req.headers['content-type']; const filename=req.headers['x-file-name']||'upload'; if(!imageTypes.has(mimeType)||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({message:'Upload a JPEG, PNG, WEBP, or GIF image.'}); if(req.body.length>maxImageBytes)return res.status(413).json({message:'Images must be 5 MB or smaller.'})
  const data=await uploadToCloudinary(req.body,{filename,mimeType,folder:req.headers['x-upload-folder']||'the-archive'}); const media=await prisma.media.create({data:{name:filename,url:data.secure_url,publicId:data.public_id,mimeType,width:data.width,height:data.height,bytes:data.bytes,folder:data.folder,resourceType:data.resource_type||'image',altText:req.headers['x-alt-text']||null,createdById:req.user.id}}); res.status(201).json(media)
 })
-app.get('/api/admin/posts',async(req,res)=>{const rows=await fetchPostList('',100);res.json(rows.map(row=>({...row,_count:{comments:row.commentCount||0,likes:row.likeCount||0,views:row.viewCount||0}})))})
 app.get('/api/admin/comments',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.findMany({orderBy:{createdAt:'desc'},include:{post:{select:{title:true,slug:true}}} })))
 app.patch('/api/admin/comments/:id',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>res.json(await prisma.comment.update({where:{id:req.params.id},data:{status:req.body.status}})))
-app.get('/api/admin/posts/:id',async(req,res)=>{const p=await fetchPostDetailById(req.params.id);p?res.json(p):res.status(404).json({message:'Not found'})})
-app.post('/api/admin/posts',async(req,res)=>{
- const b=req.body;const slug=b.slug?.trim()||slugify(b.title,{lower:true,strict:true});const publishedAt=b.status==='PUBLISHED'?new Date():null
- const seo=seoAnalysis(b); const p=await prisma.post.create({data:{title:b.title,slug,excerpt:b.excerpt||null,content:b.content||'',featuredImage:b.featuredImage||null,featuredImageAlt:b.featuredImageAlt||null,featuredImageCrop:b.featuredImageCrop||null,sourceName:b.sourceName||null,sourceUrl:b.sourceUrl||null,status:b.status||'DRAFT',featured:!!b.featured,seoTitle:b.seoTitle||null,seoDescription:b.seoDescription||null,seoFocusKeyword:b.seoFocusKeyword||null,seoScore:seo.score,seoChecks:seo.checks,contentFormat:b.contentFormat||'html',publishedAt,authorId:req.user.id,categoryId:b.categoryId||null},include:postInclude});res.status(201).json({...p,seo})
-})
-app.put('/api/admin/posts/:id',async(req,res)=>{
- const b=req.body;const old=await prisma.post.findUnique({where:{id:req.params.id}});if(!old)return res.status(404).json({message:'Not found'})
- const slug=b.slug?.trim()||slugify(b.title,{lower:true,strict:true});const publishedAt=b.status==='PUBLISHED'?(old.publishedAt||new Date()):old.publishedAt; const seo=seoAnalysis(b)
- const p=await prisma.post.update({where:{id:req.params.id},data:{title:b.title,slug,excerpt:b.excerpt||null,content:b.content||'',featuredImage:b.featuredImage||null,featuredImageAlt:b.featuredImageAlt||null,featuredImageCrop:b.featuredImageCrop||null,sourceName:b.sourceName||null,sourceUrl:b.sourceUrl||null,status:b.status,featured:!!b.featured,seoTitle:b.seoTitle||null,seoDescription:b.seoDescription||null,seoFocusKeyword:b.seoFocusKeyword||null,seoScore:seo.score,seoChecks:seo.checks,contentFormat:b.contentFormat||'html',publishedAt,categoryId:b.categoryId||null},include:postInclude});res.json({...p,seo})
-})
-app.post('/api/admin/posts/seo-analyze',(req,res)=>res.json(seoAnalysis(req.body)))
-app.delete('/api/admin/posts/:id',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>{await prisma.post.delete({where:{id:req.params.id}});res.json({ok:true})})
 
 app.post('/api/admin/categories',roles('SUPER_ADMIN','ADMIN','EDITOR'),async(req,res)=>{
  const name=req.body.name.trim();res.status(201).json(await prisma.category.create({data:{name,slug:slugify(name,{lower:true,strict:true}),description:req.body.description||null}}))
 })
-app.get('/api/admin/users',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>res.json(await prisma.user.findMany({select:safeUser,orderBy:{createdAt:'desc'}})))
-app.post('/api/admin/users',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{
- const {name,email,password,role='AUTHOR'}=req.body; const hash=await bcrypt.hash(password,12)
- res.status(201).json(await prisma.user.create({data:{name,email:email.toLowerCase(),password:hash,role},select:safeUser}))
+app.use('/api/admin/users',async(req,res,next)=>{
+ try {
+  if(!['POST','PUT'].includes(req.method))return next()
+  const target=req.method==='PUT'?await prisma.user.findUnique({where:{id:req.path.split('/').filter(Boolean)[0]}}):null
+  if(req.method==='PUT'&&!target)return res.status(404).json({message:'Account not found.'})
+  const {name,email,password,role='AUTHOR',active=true}=req.body
+  const denial=accountPermission(req.user,target,role,active)
+  if(denial)return res.status(403).json({message:denial})
+  if(typeof name!=='string'||!name.trim()||typeof email!=='string'||!email.includes('@')||typeof active!=='boolean')return res.status(400).json({message:'Name, email and account status are required.'})
+  if((req.method==='POST'||password)&& (typeof password!=='string'||password.length<12||password.length>72))return res.status(400).json({message:'Use a password between 12 and 72 characters.'})
+  next()
+ }catch(error){next(error)}
 })
-app.put('/api/admin/users/:id',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{
- const {name,email,bio,role,active,password}=req.body; const data={name,email:email.toLowerCase(),bio:bio||null,role,active:Boolean(active)}
+app.get('/api/admin/users',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>res.json(await prisma.user.findMany({where:req.user.role==='SUPER_ADMIN'?{}:{role:{in:['AUTHOR','EDITOR']}},select:safeUser,orderBy:{createdAt:'desc'}})))
+app.post('/api/admin/users',roles('SUPER_ADMIN','ADMIN'),handled(async(req,res)=>{
+ const {name,email,password,role='AUTHOR'}=req.body; const hash=await bcrypt.hash(password,12)
+ res.status(201).json(await prisma.user.create({data:{name:name.trim(),email:email.trim().toLowerCase(),password:hash,role,bio:req.body.bio||null,active:req.body.active!==false},select:safeUser}))
+}))
+app.put('/api/admin/users/:id',roles('SUPER_ADMIN','ADMIN'),handled(async(req,res)=>{
+ const {name,email,bio,role,active,password}=req.body; const data={name,email:email.trim().toLowerCase(),bio:bio||null,role,active:Boolean(active)}
  if(password?.trim())data.password=await bcrypt.hash(password.trim(),12)
  res.json(await prisma.user.update({where:{id:req.params.id},data,select:safeUser}))
-})
-app.put('/api/admin/settings',roles('SUPER_ADMIN','ADMIN'),async(req,res)=>{
- const {siteName,tagline,contactEmail,logoText,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}=req.body
- res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{siteName,tagline,contactEmail,logoText,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead},create:{id:'main',siteName,tagline,contactEmail,logoText,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}}))
-})
+}))
+app.put('/api/admin/settings',roles('SUPER_ADMIN','ADMIN'),handled(async(req,res)=>{
+ if(req.body.logoUrl&&!/^(https?:\/\/|\/(?!\/))/.test(req.body.logoUrl))return res.status(400).json({message:'Use an uploaded image or a valid image URL.'})
+ const {siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}=req.body
+ res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead},create:{id:'main',siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}}))
+}))
 
-app.use((err,req,res,next)=>{if(res.headersSent)return next(err);console.error(err);res.status(err.status||500).json({message:'Server error',detail:process.env.NODE_ENV==='development'?err.message:undefined})})
+app.use((err,req,res,next)=>{if(res.headersSent)return next(err);console.error(err);res.status(err.code==='P2002'?409:err.status||500).json({message:err.code==='P2002'?'That email or slug is already in use.':'Server error',detail:process.env.NODE_ENV==='development'?err.message:undefined})})
 const port=Number(process.env.PORT||5000)
 if(process.env.VERCEL!=='1')app.listen(port,()=>console.log(`API running on http://localhost:${port}`))
 export default app
