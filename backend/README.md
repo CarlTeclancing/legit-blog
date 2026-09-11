@@ -17,6 +17,14 @@ The API listens on `http://localhost:5000` by default. Copy `.env.example` to `.
 
 Deploy the `backend` directory as its own Vercel project. The project includes `api/index.js` as the serverless entry point and `vercel.json` to route `/api/*` requests to it. Configure all production environment variables in Vercel Project Settings. Never commit `.env` files or production secrets.
 
+The backend selects Node.js `22.x` through `package.json` to match its dependencies. The build generates Prisma Client, checks that the API entry point starts with working production CORS/preflight responses, and applies database migrations.
+
+`sanitize-html` is pinned to `2.17.5`, which uses the CommonJS-compatible `htmlparser2` 10.x package. Versions 2.17.6–2.17.7 load the ESM-only parser through `require()`, causing `ERR_REQUIRE_ESM` under the deployed function loader. The startup check disables Node's experimental `require(esm)` support to catch this incompatibility before deployment. Keep the lockfile committed; upgrading this dependency requires running that check.
+
+Production CORS permits `https://www.legit.cm`, `https://legit.cm`, and the two known Vercel project domains. Add any other frontend or preview origins as a comma-separated `FRONTEND_URL` value. Localhost is allowed automatically in development; production requires it to be explicitly configured.
+
+If the browser reports CORS together with `500 FUNCTION_INVOCATION_FAILED`, check `/api/health` and the backend Vercel **Runtime Logs**. A failure before Express starts cannot receive Express CORS headers. The first runtime stack trace identifies the startup issue; do not change the allowlist to `*` to mask it. After updating backend configuration, deploy the backend again. Run `npm run check:startup` locally to check the entry point and production origins.
+
 ## API conventions
 
 - Public endpoints are under `/api`: `GET /health`, `GET /settings`, `GET /categories`, `GET /posts`, `GET /posts/:slug`, `GET /search`, `POST /newsletter`, and `POST /author-requests`.
