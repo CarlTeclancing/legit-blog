@@ -1,3 +1,4 @@
+import {getSiteSettings} from '../settings'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Heart, Send, Share2 } from 'lucide-react'
@@ -6,6 +7,8 @@ import api from '../api'
 export default function Article() {
   const { slug } = useParams()
   const [post, setPost] = useState(null)
+  const [allowComments, setAllowComments] = useState(false)
+  useEffect(() => { getSiteSettings().then(site => setAllowComments(!!site.allowComments)) }, [])
   const [comments, setComments] = useState([])
   const [liked, setLiked] = useState(false)
   const [shared, setShared] = useState(false)
@@ -70,13 +73,13 @@ export default function Article() {
           <section className="comments">
             <h2>Join the conversation</h2>
             <p>Comments are reviewed before they appear. You can comment anonymously or leave your name and email.</p>
-            <form className="comment-form" onSubmit={comment}>
+            {allowComments ? <form className="comment-form" onSubmit={comment}>
               <label>Name (optional)<input value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} placeholder="Anonymous" /></label>
               <label>Email (optional)<input type="email" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" /></label>
               <label>Comment<textarea required rows="5" value={form.body} onChange={event => setForm({ ...form, body: event.target.value })} /></label>
               {message && <div className="alert">{message}</div>}
               <button className="primary"><Send /> Submit comment</button>
-            </form>
+            </form> : <p>New comments are currently closed.</p>}
             <div className="comment-list">{comments.map(comment => <article className="comment" key={comment.id}><strong>{comment.isAnonymous ? 'Anonymous' : comment.name}</strong><small>{new Date(comment.createdAt).toLocaleDateString()}</small><p>{comment.body}</p></article>)}</div>
           </section>
         </div>

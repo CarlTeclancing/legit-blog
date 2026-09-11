@@ -1,0 +1,7 @@
+import {useState} from 'react'
+import api from '../api'
+export default function ChangePassword(){
+ const [currentPassword,setCurrent]=useState('');const [password,setPassword]=useState('');const [confirm,setConfirm]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false)
+ async function submit(e){e.preventDefault();if(password!==confirm){setMessage('The new passwords do not match.');return}setBusy(true);setMessage('');try{await api.put('/admin/profile/password',{currentPassword,password});setCurrent('');setPassword('');setConfirm('');setMessage('Password changed.')}catch(e){setMessage(e.response?.data?.message||'Could not change password.')}finally{setBusy(false)}}
+ return <form className="panel profile-panel" onSubmit={submit} style={{marginTop:20}}><h2>Change password</h2><label>Current password<input type="password" required autoComplete="current-password" value={currentPassword} onChange={e=>setCurrent(e.target.value)}/></label><label>New password<input type="password" required minLength="12" maxLength="72" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)}/></label><label>Confirm new password<input type="password" required autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>{message&&<p role="status">{message}</p>}<button className="primary" disabled={busy}>{busy?'Updating…':'Change password'}</button></form>
+}

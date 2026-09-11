@@ -140,6 +140,14 @@ app.get('/api/admin/stats',async(req,res)=>{
  ]); const topPosts=publishedRows.sort((a,b)=>(b.viewCount-a.viewCount)||(b.likeCount-a.likeCount)).slice(0,5); const views=publishedRows.reduce((sum,post)=>sum+post.viewCount,0); const likes=publishedRows.reduce((sum,post)=>sum+post.likeCount,0);res.json({published,drafts,categories,users,subscribers,posts,comments,views,likes,topPosts})
 })
 app.get('/api/admin/profile',async(req,res)=>res.json(await prisma.user.findUnique({where:{id:req.user.id},select:safeUser})))
+app.put('/api/admin/profile/password',handled(async(req,res)=>{
+ const {currentPassword,password}=req.body
+ if(typeof currentPassword!=='string'||typeof password!=='string'||password.length<12||Buffer.byteLength(password)>72)fail('Use a new password of at least 12 characters and at most 72 bytes.')
+ const user=await prisma.user.findUnique({where:{id:req.user.id}})
+ if(!await bcrypt.compare(currentPassword,user.password))fail('Current password is incorrect.',400)
+ await prisma.user.update({where:{id:req.user.id},data:{password:await bcrypt.hash(password,12)}})
+ res.json({ok:true})
+}))
 app.put('/api/admin/profile',async(req,res)=>{
  const {name,bio,avatar}=req.body; res.json(await prisma.user.update({where:{id:req.user.id},data:{name,bio:bio||null,avatar:avatar||null},select:safeUser}))
 })
@@ -168,7 +176,7 @@ app.use('/api/admin/users',async(req,res,next)=>{
   const denial=accountPermission(req.user,target,role,active)
   if(denial)return res.status(403).json({message:denial})
   if(typeof name!=='string'||!name.trim()||typeof email!=='string'||!email.includes('@')||typeof active!=='boolean')return res.status(400).json({message:'Name, email and account status are required.'})
-  if((req.method==='POST'||password)&& (typeof password!=='string'||password.length<12||password.length>72))return res.status(400).json({message:'Use a password between 12 and 72 characters.'})
+  if((req.method==='POST'||password)&& (typeof password!=='string'||password.length<12||Buffer.byteLength(password)>72))return res.status(400).json({message:'Use a password between 12 and 72 characters.'})
   next()
  }catch(error){next(error)}
 })
@@ -179,11 +187,16 @@ app.post('/api/admin/users',roles('SUPER_ADMIN','ADMIN'),handled(async(req,res)=
 }))
 app.put('/api/admin/users/:id',roles('SUPER_ADMIN','ADMIN'),handled(async(req,res)=>{
  const {name,email,bio,role,active,password}=req.body; const data={name,email:email.trim().toLowerCase(),bio:bio||null,role,active:Boolean(active)}
- if(password?.trim())data.password=await bcrypt.hash(password.trim(),12)
+ if(password)data.password=await bcrypt.hash(password,12)
  res.json(await prisma.user.update({where:{id:req.params.id},data,select:safeUser}))
 }))
 app.put('/api/admin/settings',roles('SUPER_ADMIN','ADMIN'),handled(async(req,res)=>{
  if(req.body.logoUrl&&!/^(https?:\/\/|\/(?!\/))/.test(req.body.logoUrl))return res.status(400).json({message:'Use an uploaded image or a valid image URL.'})
+ if(req.body.contactEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.body.contactEmail))fail('Enter a valid contact email.')
+ if(req.body.socialLinks){
+  if(typeof req.body.socialLinks!=='object'||Array.isArray(req.body.socialLinks))fail('Invalid social links.')
+  for(const value of Object.values(req.body.socialLinks))if(value&&(typeof value!=='string'||!/^https?:\/\//i.test(value)))fail('Social links must use http or https.')
+ }
  const {siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}=req.body
  res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead},create:{id:'main',siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}}))
 }))

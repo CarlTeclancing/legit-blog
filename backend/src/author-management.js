@@ -37,7 +37,7 @@ export function authorManagement(prisma,sendMail=sendAuthorMail){
  router.post('/author-requests/:id/account',handled(async(req,res)=>{
    const {role,password}=req.body
    if(!['AUTHOR','EDITOR'].includes(role))fail('Choose Author or Editor.')
-   if(typeof password!=='string'||password.length<12||password.length>72)fail('Use a password between 12 and 72 characters.')
+   if(typeof password!=='string'||password.length<12||Buffer.byteLength(password)>72)fail('Use a password between 12 and 72 characters.')
    const hash=await bcrypt.hash(password,12)
    const result=await prisma.$transaction(async tx=>{
      const application=await tx.authorRequest.findUnique({where:{id:req.params.id}})

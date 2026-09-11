@@ -77,3 +77,31 @@ test('author replies save drafts, use applicant address and record delivery fail
   assert.equal(application.response,'Saved despite failure');assert.equal(history[1].status,'FAILED')
  })
 })
+
+test('application approval creates one bounded-role account and rejects repeat or elevated requests',async()=>{
+ const application={id:'a1',name:'Applicant',email:'applicant@example.test',bio:'Bio',accountId:null};const users=[]
+ const tx={authorRequest:{findUnique:async()=>application,updateMany:async({data})=>{Object.assign(application,data);return {count:1}}},user:{findUnique:async({where})=>users.find(u=>u.email===where.email)||null,create:async({data})=>{const user={id:'created',...data};users.push(user);return user}}}
+ const prisma={$transaction:async fn=>fn(tx)}
+ await harness(prisma,authorManagement(prisma),async call=>{
+  assert.equal((await call('/admin/author-requests/a1/account','admin','POST',{role:'SUPER_ADMIN',password:'password-test-123'})).status,400)
+  assert.equal((await call('/admin/author-requests/a1/account','admin','POST',{role:'EDITOR',password:'short'})).status,400)
+  const result=await call('/admin/author-requests/a1/account','admin','POST',{role:'EDITOR',password:'password-test-123'});assert.equal(result.status,201)
+  assert.equal(application.status,'APPROVED');assert.equal(application.accountId,'created');assert.equal(users[0].role,'EDITOR');assert.notEqual(users[0].password,'password-test-123')
+  assert.equal((await call('/admin/author-requests/a1/account','admin','POST',{role:'EDITOR',password:'password-test-123'})).status,409);assert.equal(users.length,1)
+ })
+})
+
+test('public post endpoints force published content and author media is private',async()=>{
+ process.env.VERCEL='1';process.env.JWT_SECRET='public-boundary-test'
+ const queries=[];let mediaWhere
+ const prisma={$queryRaw:async query=>{queries.push(query);return []},user:{findUnique:async()=>author},media:{findMany:async({where})=>{mediaWhere=where;return []}}}
+ globalThis.__legitPrisma=prisma
+ const app=(await import('./server.js')).default
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const base='http://127.0.0.1:'+server.address().port
+ try{
+  assert.equal((await fetch(base+'/api/posts?status=DRAFT')).status,200)
+  assert.ok(queries[0].values.includes('PUBLISHED'));assert.ok(!queries[0].values.includes('DRAFT'))
+  assert.equal((await fetch(base+'/api/posts/draft-slug')).status,404);assert.ok(queries[1].strings.join('').includes('PUBLISHED'))
+  await fetch(base+'/api/admin/media',{headers:{Authorization:'Bearer '+jwt.sign({id:'writer',role:'SUPER_ADMIN'},process.env.JWT_SECRET)}});assert.deepEqual(mediaWhere,{createdById:'writer'})
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));delete globalThis.__legitPrisma}
+})

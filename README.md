@@ -80,3 +80,26 @@ Commit `.env.example`, but normally do not commit production secrets.
 Homepage adverts are stored in the `Advert` table. For each deployment, run `npx prisma migrate deploy` and `npx prisma generate` from `backend` before starting the API. The advert migration imports the original three promotions as editable records. The homepage shows only visible adverts and hides the slider when none are visible.
 
 Run advert API and validation checks with `node --test src/adverts.test.js` from `backend`.
+
+## CMS administration
+
+Settings are organized into Basic settings, Branding, SEO & analytics, Footer & social, Publishing, and Advanced tabs. Upload a logo in Branding and save settings. The header and footer use the image, with logo text as a fallback if it is missing or cannot load. The footer uses the live category list and configured social links.
+
+| Role | Access |
+| --- | --- |
+| Author | Own posts and draft editing/deletion, own uploaded media, profile and password |
+| Editor | All posts, publication and bulk status actions, categories, comments, adverts, media and analytics |
+| Admin | Editor capabilities plus author applications, newsletter, settings, and author/editor accounts |
+| Super admin | Admin capabilities plus administrator account management |
+
+Permissions are checked by the API using the current database account on every authenticated request. Disabling accounts and role changes take effect immediately. Authors cannot publish or modify published posts. Public post endpoints only return published content. Post HTML is sanitized on save and on public article reads.
+
+The Posts screen supports server-side pagination, text/status/category/author/featured/date filters, sorting, bulk status updates, and CSV export of matching posts (up to 10,000 per export). Author exports are restricted to their own posts. CSV formula prefixes are neutralized.
+
+Under Author requests, admins can review applications, save reply drafts, send replies, inspect delivery history, and approve an application by creating an Author or Editor account. Repeated approval and existing email accounts are rejected. Initial passwords are not emailed; share them securely, then the user can change the password under Profile.
+
+Email delivery requires these server environment variables: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` (see `backend/.env.example`). Configure them locally and in the backend deployment. Without SMTP, drafts can still be saved and opened in an email app. Sending from an email app is not recorded as server delivery. No email is sent automatically on application approval.
+
+Deploy the backend with `npm run vercel-build` to regenerate Prisma Client and apply migrations. The `20260911090000_cms_management` migration adds logo and application-review storage without deleting existing content. Deploy the frontend after the backend is ready.
+
+Run permission and workflow checks from `backend` with `node --test src/adverts.test.js src/management.test.js`.
