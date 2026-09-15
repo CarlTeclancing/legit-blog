@@ -12,6 +12,7 @@ dist/
 build/
 coverage/
 .vite/
+.vercel/
 
 # Runtime data and logs
 *.log

@@ -47,6 +47,24 @@ npm run dev
 Frontend: http://localhost:5173
 Admin: http://localhost:5173/admin
 
+### Deploy the frontend and enable shared-article previews
+
+Use `frontend` as the Vercel project root and the checked-in `vercel.json`. Build with `npm run build`, which builds Vite and packages `.vercel/output` with static assets and a self-contained article renderer. The renderer embeds its HTML template, so direct article links do not depend on a `dist` folder existing inside a deployed function. Homepage routing also reaches the renderer before the static index page.
+
+Set `VITE_API_URL` to the public backend API URL and `VITE_SITE_URL` to the preferred frontend origin in the frontend deployment environment. Remove any dashboard build-command override that runs only `vite build`; publishing only `dist` omits the renderer and sharing previews. Deploy the generated Build Output API output using the repository's build configuration.
+
+Shared `/article/:slug` URLs include the article title, description, featured-image Open Graph/Twitter tags, and full article HTML before JavaScript runs. React reuses the server-loaded article, including when a follow-up browser API request fails. After deploying, inspect an article's source and confirm HTTP 200 plus `og:image` pointing to its featured image.
+
+Verify the actual deployment bundle after building:
+
+```bash
+cd frontend
+npm run build
+node --test server/seo.test.js server/sharing.test.js
+```
+
+These checks exercise the packaged renderer for ordinary browsers and sharing-crawler user agents, verify featured-image metadata and article HTML, check missing-story 404 responses, and ensure matching client assets are included. `vite preview` alone serves the static client and does not test production shared-link rendering.
+
 ## Environment
 All configurable runtime values are in:
 - `frontend/.env`

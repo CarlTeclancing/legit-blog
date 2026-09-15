@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Heart, Send, Share2 } from 'lucide-react'
 import api from '../api'
+import {initialArticle} from '../initialPage'
 
 export default function Article() {
   const { slug } = useParams()
-  const [post, setPost] = useState(null)
+  const [post, setPost] = useState(()=>initialArticle(slug))
   const [loadError,setLoadError]=useState('')
   const [allowComments, setAllowComments] = useState(false)
   useEffect(() => { getSiteSettings().then(site => setAllowComments(!!site.allowComments)) }, [])
@@ -18,9 +19,10 @@ export default function Article() {
 
   useEffect(() => {
     const controller=new AbortController()
-    setPost(null);setLoadError('');setComments([]);setLiked(false);setShared(false)
-    api.get(`/posts/${slug}`,{signal:controller.signal}).then(response => setPost(response.data)).catch(error=>{if(!controller.signal.aborted)setLoadError(error.response?.status===404?'This story is no longer available.':'Could not load this story. Please try again.')})
-    api.get(`/posts/${slug}/comments`,{signal:controller.signal}).then(response => setComments(response.data)).catch(() => {})
+    const initial=initialArticle(slug)
+    setPost(initial);setLoadError('');setComments([]);setLiked(false);setShared(false)
+    api.get(`/posts/${encodeURIComponent(slug)}`,{signal:controller.signal}).then(response => setPost(response.data)).catch(error=>{if(!controller.signal.aborted&&(!initial||error.response?.status===404))setLoadError(error.response?.status===404?'This story is no longer available.':'Could not load this story. Please try again.')})
+    api.get(`/posts/${encodeURIComponent(slug)}/comments`,{signal:controller.signal}).then(response => setComments(response.data)).catch(() => {})
     return()=>controller.abort()
   }, [slug])
 
@@ -34,7 +36,7 @@ export default function Article() {
   }
 
   async function share() {
-    const url = window.location.href
+    const url = new URL(`/article/${encodeURIComponent(post.slug)}`,window.location.origin).href
     try {
       if (navigator.share) await navigator.share({ title: post.title, text: post.excerpt, url })
       else await navigator.clipboard.writeText(url)

@@ -1,4 +1,4 @@
-import {absoluteUrl,buildSeo,escapeHtml as esc,seoHead} from '../src/seo.js'
+import {absoluteUrl,buildSeo,escapeHtml as esc,seoHead,serialize} from '../src/seo.js'
 
 const pageNumber=value=>Math.max(1,Math.min(parseInt(value,10)||1,100000))
 const articlePath=slug=>`/article/${encodeURIComponent(slug)}`
@@ -33,7 +33,8 @@ export async function renderPublicPage({path='/',query=new URLSearchParams(),ori
  if(status===404)body='<main class="container page-pad"><h1>Page not found</h1><p>This page is not available.</p><a href="/">Explore the latest stories</a></main>'
  const seo=buildSeo({site,path,page,post,category,origin,noindex:preview||status===404})
  const head=seoHead(seo)
- const html=shell.replace(/<title>[\s\S]*?<\/title>/,'').replace(/<meta name="description"[^>]*>/,'').replace('</head>',`${head}</head>`).replace('<div id="root"></div>',`<div id="root">${body}</div>`)
+ const initial=post?`<script id="initial-article" type="application/json">${serialize(post)}</script>`:''
+ const html=shell.replace(/<title>[\s\S]*?<\/title>/,'').replace(/<meta name="description"[^>]*>/,'').replace('</head>',`${head}</head>`).replace('<div id="root"></div>',`<div id="root">${body}</div>${initial}`)
  return {status,html}
 }
 
