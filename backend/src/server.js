@@ -31,11 +31,13 @@ const postInclude={author:{select:{id:true,name:true,bio:true,avatar:true}},cate
 const publicPostSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,viewCount:true,likeCount:true,author:{select:{id:true,name:true,avatar:true}},category:true}
 const postListSelect={id:true,title:true,slug:true,excerpt:true,featuredImage:true,featuredImageAlt:true,status:true,featured:true,publishedAt:true,createdAt:true,updatedAt:true,viewCount:true,likeCount:true,commentCount:true,authorId:true,categoryId:true}
 
-async function fetchPostList(status,limit,categorySlug=''){
+async function fetchPostList(status,limit,categorySlug='',page=1,featuredOnly=false){
  const take=Math.max(1,Math.min(Number(limit)||30,100))
  const statusFilter=status?Prisma.sql`"status" = ${status}::"PostStatus"`:Prisma.sql`TRUE`
+ const offset=(page-1)*take
+ const featuredFilter=featuredOnly?Prisma.sql`AND "featured" = TRUE`:Prisma.empty
  const categoryFilter=categorySlug?Prisma.sql`AND "categoryId" IN (SELECT "id" FROM "Category" WHERE "slug" = ${categorySlug})`:Prisma.empty
- return prisma.$queryRaw(Prisma.sql`SELECT "id","title","slug","excerpt","featuredImage","featuredImageAlt","status","featured","publishedAt","createdAt","updatedAt","viewCount","likeCount","commentCount","authorId","categoryId" FROM "Post" WHERE ${statusFilter} ${categoryFilter} ORDER BY "featured" DESC, "publishedAt" DESC NULLS LAST, "createdAt" DESC LIMIT ${take}`)
+ return prisma.$queryRaw(Prisma.sql`SELECT "id","title","slug","excerpt","featuredImage","featuredImageAlt","status","featured","publishedAt","createdAt","updatedAt","viewCount","likeCount","commentCount","authorId","categoryId" FROM "Post" WHERE ${statusFilter} ${categoryFilter} ${featuredFilter} ORDER BY "featured" DESC, "publishedAt" DESC NULLS LAST, "createdAt" DESC, "id" DESC LIMIT ${take + 1} OFFSET ${offset}`)
 }
 
 async function fetchPostDetail(slug){
@@ -91,16 +93,22 @@ app.post('/api/auth/login',async(req,res)=>{
 app.get('/api/categories',async(req,res)=>res.json(await prisma.category.findMany({orderBy:{name:'asc'},include:{_count:{select:{posts:true}}}})))
 app.get('/api/settings',handled(async(req,res)=>{res.set('Cache-Control','no-store');res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{},create:{id:'main'}}))}))
 
-app.get('/api/posts',async(req,res)=>{
- const {category,limit='30'}=req.query;const status='PUBLISHED'
- const where={}; if(status)where.status=status; if(category)where.category={slug:category}
- const rows=await fetchPostList(status,limit,category)
- const items=rows
+app.get('/api/posts',handled(async(req,res)=>{
+ const {category,featured}=req.query
+ const page=Math.max(1,Math.min(parseInt(req.query.page,10)||1,100000))
+ const limit=Math.max(1,Math.min(parseInt(req.query.limit,10)||30,100))
+ const rows=await fetchPostList('PUBLISHED',limit,category,page,featured==='true')
  const cat=category?await prisma.category.findUnique({where:{slug:category}}):null
- res.json({items,category:cat})
-})
+ res.json({items:rows.slice(0,limit),category:cat,page,hasMore:rows.length>limit,nextPage:rows.length>limit?page+1:null})
+}))
+app.get('/api/sitemap',handled(async(req,res)=>{
+ const page=Math.max(1,parseInt(req.query.page,10)||1)
+ const where={status:'PUBLISHED'}
+ const [total,items]=await Promise.all([prisma.post.count({where}),prisma.post.findMany({where,select:{slug:true,updatedAt:true},orderBy:{id:'asc'},take:1000,skip:(page-1)*1000})])
+ res.json({items,totalPages:Math.max(1,Math.ceil(total/1000))})
+}))
 app.get('/api/posts/:slug',async(req,res)=>{
- const p=await fetchPostDetail(req.params.slug); if(!p)return res.status(404).json({message:'Not found'}); res.json({...p,viewCount:p.viewCount+1}); Promise.all([prisma.postView.create({data:{postId:p.id,fingerprint:fingerprint(req)}}),prisma.post.update({where:{id:p.id},data:{viewCount:{increment:1}}})]).catch(()=>{})
+ const p=await fetchPostDetail(req.params.slug); if(!p)return res.status(404).json({message:'Not found'}); res.json({...p,viewCount:p.viewCount+(req.query.preview==='true'?0:1)}); if(req.query.preview==='true')return; Promise.all([prisma.postView.create({data:{postId:p.id,fingerprint:fingerprint(req)}}),prisma.post.update({where:{id:p.id},data:{viewCount:{increment:1}}})]).catch(()=>{})
 })
 app.get('/api/posts/:slug/comments',async(req,res)=>{const p=await prisma.post.findFirst({where:{slug:req.params.slug,status:'PUBLISHED'},select:{id:true}});if(!p)return res.status(404).json({message:'Not found'});res.json(await prisma.comment.findMany({where:{postId:p.id,status:'APPROVED'},orderBy:{createdAt:'desc'},select:{id:true,name:true,body:true,isAnonymous:true,createdAt:true}}))})
 app.post('/api/posts/:slug/comments',async(req,res)=>{
@@ -184,14 +192,15 @@ app.put('/api/admin/users/:id',roles('SUPER_ADMIN','ADMIN'),handled(async(req,re
  res.json(await prisma.user.update({where:{id:req.params.id},data,select:safeUser}))
 }))
 app.put('/api/admin/settings',roles('SUPER_ADMIN','ADMIN'),handled(async(req,res)=>{
+ for(const key of ['brandColor','ctaTextColor'])if(req.body[key]!=null&&!/^#[0-9a-f]{6}$/i.test(req.body[key]))fail('Choose a valid six-digit color.');
  if(req.body.logoUrl&&!/^(https?:\/\/|\/(?!\/))/.test(req.body.logoUrl))return res.status(400).json({message:'Use an uploaded image or a valid image URL.'})
  if(req.body.contactEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.body.contactEmail))fail('Enter a valid contact email.')
  if(req.body.socialLinks){
   if(typeof req.body.socialLinks!=='object'||Array.isArray(req.body.socialLinks))fail('Invalid social links.')
   for(const value of Object.values(req.body.socialLinks))if(value&&(typeof value!=='string'||!/^https?:\/\//i.test(value)))fail('Social links must use http or https.')
  }
- const {siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}=req.body
- res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead},create:{id:'main',siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,customCss,customHead}}))
+ const {siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,ctaTextColor,customCss,customHead}=req.body
+ res.json(await prisma.siteSetting.upsert({where:{id:'main'},update:{siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,ctaTextColor,customCss,customHead},create:{id:'main',siteName,tagline,contactEmail,logoText,logoUrl,footerText,defaultSeoTitle,defaultSeoDescription,socialLinks,googleAnalyticsId,allowComments,maintenanceMode,brandColor,ctaTextColor,customCss,customHead}}))
 }))
 
 app.use((err,req,res,next)=>{if(res.headersSent)return next(err);console.error(err);res.status(err.code==='P2002'?409:err.status||500).json({message:err.code==='P2002'?'That email or slug is already in use.':'Server error',detail:process.env.NODE_ENV==='development'?err.message:undefined})})

@@ -5,7 +5,7 @@ import { heroMessages } from '../homeContent'
 import api from '../api'
 import './HomePromotions.css'
 
-function useRotation(count, delay) {
+export function useRotation(count, delay) {
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
   const [hovered, setHovered] = useState(false)

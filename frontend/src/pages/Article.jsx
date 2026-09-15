@@ -7,6 +7,7 @@ import api from '../api'
 export default function Article() {
   const { slug } = useParams()
   const [post, setPost] = useState(null)
+  const [loadError,setLoadError]=useState('')
   const [allowComments, setAllowComments] = useState(false)
   useEffect(() => { getSiteSettings().then(site => setAllowComments(!!site.allowComments)) }, [])
   const [comments, setComments] = useState([])
@@ -16,10 +17,14 @@ export default function Article() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    api.get(`/posts/${slug}`).then(response => setPost(response.data))
-    api.get(`/posts/${slug}/comments`).then(response => setComments(response.data)).catch(() => {})
+    const controller=new AbortController()
+    setPost(null);setLoadError('');setComments([]);setLiked(false);setShared(false)
+    api.get(`/posts/${slug}`,{signal:controller.signal}).then(response => setPost(response.data)).catch(error=>{if(!controller.signal.aborted)setLoadError(error.response?.status===404?'This story is no longer available.':'Could not load this story. Please try again.')})
+    api.get(`/posts/${slug}/comments`,{signal:controller.signal}).then(response => setComments(response.data)).catch(() => {})
+    return()=>controller.abort()
   }, [slug])
 
+  if(loadError)return <main className="container page-pad"><h1>Story unavailable</h1><p>{loadError}</p><Link to="/">Explore other stories</Link></main>
   if (!post) return <main className="container page-pad">Loading...</main>
 
   async function like() {
@@ -53,11 +58,12 @@ export default function Article() {
 
   return <main>
     <article className="article-page">
-      <header className="article-header container">
+      <header className="article-header container"><nav className="article-breadcrumb" aria-label="Breadcrumb"><Link to="/">Home</Link> / {post.category&&<Link to={`/category/${post.category.slug}`}>{post.category.name}</Link>}</nav>
         <Link className="eyebrow" to={`/category/${post.category?.slug}`}>{post.category?.name}</Link>
         <h1>{post.title}</h1>
         <p className="dek">{post.excerpt}</p>
         <div className="byline">By <strong>{post.author?.name}</strong> · {new Date(post.publishedAt || post.createdAt).toLocaleDateString()}</div>
+        <p className="article-dates">Published <time dateTime={post.publishedAt||post.createdAt}>{new Date(post.publishedAt||post.createdAt).toLocaleDateString()}</time>{post.updatedAt&&post.updatedAt!==(post.publishedAt||post.createdAt)&&<> | Updated <time dateTime={post.updatedAt}>{new Date(post.updatedAt).toLocaleDateString()}</time></>}</p>
         <div className="article-actions">
           <button onClick={like} className={liked ? 'active' : ''}><Heart /> {post.likeCount || 0} Likes</button>
           <button onClick={share}><Share2 /> {shared ? 'Link copied' : 'Share'}</button>
@@ -70,6 +76,7 @@ export default function Article() {
         <div>
           <div className="article-content" dangerouslySetInnerHTML={{ __html: post.content }} />
           {post.sourceUrl && <p className="source-note">Further reading: <a href={post.sourceUrl} target="_blank" rel="noreferrer">{post.sourceName || 'Source reference'}</a></p>}
+          {post.author?.bio&&<aside className="author-bio"><h2>About {post.author.name}</h2><p>{post.author.bio}</p></aside>}
           <section className="comments">
             <h2>Join the conversation</h2>
             <p>Comments are reviewed before they appear. You can comment anonymously or leave your name and email.</p>

@@ -169,6 +169,7 @@ model SiteSetting {
   allowComments Boolean @default(false)
   maintenanceMode Boolean @default(false)
   brandColor String @default("#17344e")
+  ctaTextColor String?
   customCss String?
   customHead String?
   createdAt DateTime @default(now())
