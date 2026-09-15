@@ -1,6 +1,7 @@
 import { useEffect,useState } from 'react'
 import api from '../api'
 import ArticleCard from '../components/ArticleCard'
+import StoryCarousel from '../components/StoryCarousel'
 import {getSiteSettings} from '../settings'
 import {AnimatedHero, MarketingSlider} from '../components/HomePromotions'
 
@@ -21,15 +22,16 @@ export default function Home(){
   {loading&&<div className="container page-pad"><p>Loading stories...</p></div>}
   {!loading&&!error&&!posts.length&&<div className="container page-pad"><p>No published stories are available yet.</p></div>}
   <section className="container hero-grid" id="latest-stories" aria-label="Latest stories">
-      {hero && <ArticleCard post={hero} large/>}
+      {hero && <ArticleCard post={hero} large variant="cover-story"/>}
       <div className="side-stack">{posts.slice(1,4).map(p=><ArticleCard key={p.id} post={p}/>)}</div>
    </section>
+   <StoryCarousel posts={posts.slice(4)}/>
    <section className="container topics"><h2>Popular topics</h2><div className="topic-cloud">{cats.map(c=><a href={`/category/${c.slug}`} key={c.id}>{c.name}</a>)}</div></section>
    {cats.slice(0,5).map((c,i)=>{
       const list=posts.filter(p=>p.category?.id===c.id).slice(0,6)
       if(!list.length) return null
       return <section className="container category-section" key={c.id}><div className="section-head"><h2>{c.name}</h2><a href={`/category/${c.slug}`}>View all posts →</a></div>
-        <div className="cards-grid">{list.map(p=><ArticleCard key={p.id} post={p}/>)}</div></section>
+        <div className={`cards-grid ${i%2?'feed-list':'feed-cards'}`}>{list.map(p=><ArticleCard key={p.id} post={p} variant={i%2?'compact':'framed'}/>)}</div></section>
    })}
  </main>
 }

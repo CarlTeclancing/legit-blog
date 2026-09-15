@@ -26,3 +26,6 @@
 .rich-text-link input { flex: 1; min-width: 160px; width: auto; margin: 0; }
 .rich-text-link p { width: 100%; margin: 0; color: #9a2922; font-size: 13px; }
 @media (max-width: 600px) { .rich-text-body { padding: 16px; min-height: 320px; } .admin-title { flex-wrap: wrap; gap: 14px; } }
+/* Keep the formatting tools visible while only the article body scrolls. */
+.rich-text-editor>div:has(>.rich-text-body){max-height:58dvh;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.rich-text-body{min-height:280px}.rich-text-toolbar{position:relative;z-index:1}.rich-text-editor:focus-within{border-color:var(--brand-color)}.rich-text-toolbar button.is-active{background:var(--brand-color);color:var(--brand-contrast)}
+@media(max-width:600px){.rich-text-toolbar{flex-wrap:nowrap;overflow-x:auto}.rich-text-toolbar>*{flex-shrink:0}.rich-text-editor>div:has(>.rich-text-body){max-height:52dvh}.rich-text-body{min-height:220px}}
